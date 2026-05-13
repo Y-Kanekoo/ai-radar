@@ -28,7 +28,8 @@ For the Japanese readme, see [README.ja.md](README.ja.md).
 | 0.5. Scrapers | +9 sources (HTML scraper layer for Anthropic / HF Papers / Cursor etc.) | ✅ |
 | 1. Dedup 5-layer + 7-channel Discord | URL/Levenshtein/body_hash/thread/cluster + category webhooks | ✅ |
 | 2. Trust-tier + hype-filter + LLM fallback | Source tier scoring, hype detection, MCP-based tagging | ✅ |
-| 3. Benchmarks + GitHub Trending | LMArena / HF Leaderboard / MTEB / huchenme | ⏳ |
+| 3. Benchmarks + GitHub Trending | LMArena + MTEB + GitHub Trending (scraping) + DB v5 snapshots | ✅ |
+| 3.5. Benchmark expansion | Open LLM Leaderboard v2 / HELM / BigCodeBench / AlpacaEval | ⏳ |
 | 4. Personalization | Bayesian recommendation, A/B test, reaction learning | ⏳ |
 | 5. JP sources + Podcast | Zenn / Qiita / Hatena / Cognitive Revolution etc. | ⏳ |
 | 6. Core extraction | Reconsider qa-radar-core abstraction | ⏳ |
@@ -145,6 +146,31 @@ Each category has an independent notification record (`channel=discord_<category
 so the same article is delivered only once per category.
 
 Configure these as **GitHub Actions secrets** for the `crawl.yml` workflow.
+
+## Benchmark snapshots (Phase 3)
+
+Phase 3 introduces a *snapshot + diff* infrastructure for tracking leaderboards
+and trending repositories. A separate GitHub Actions workflow (`benchmarks.yml`,
+22:00 JST daily) fetches each registered source, stores the ranked entries as
+JSON in DB v5's `benchmark_snapshots` table, computes a diff against the previous
+snapshot, and posts changes to per-category Discord channels.
+
+| Source | Slug | Data origin | Category |
+|---|---|---|---|
+| LMArena (Chatbot Arena, text style-controlled) | `lmarena_text` | HF `lmarena-ai/leaderboard-dataset` via Datasets Server `rows` API | `benchmark` |
+| MTEB (registered models) | `mteb_models` | HF `mteb/results/paths.json` | `benchmark` |
+| GitHub Trending (daily, AI-keyword filtered) | `github_trending_daily` | scraping `github.com/trending` (AI keyword: `llm` / `agent` / `gpt` / `rag` / `diffusion` / etc.) | `trend` |
+
+The diff bucket is one of: 🆕 new rank-in, 📈 rank up (≥2 positions), 📉 rank down
+(≥2 positions), ❌ dropped. The CLI is:
+
+```bash
+uv run python scripts/track_benchmarks.py            # all registered fetchers
+uv run python scripts/track_benchmarks.py --source lmarena_text --dry-run
+```
+
+`Open LLM Leaderboard` was deferred to Phase 3.5 — its v1 dataset stopped updating
+in 2024 and v2 has not yet been verified as a stable data source.
 
 ## MCP server usage
 

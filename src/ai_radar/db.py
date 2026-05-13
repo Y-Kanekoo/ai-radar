@@ -15,12 +15,14 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 # 履歴:
 #   v2 (Phase 4): article_notifications テーブルを追加
 #   v3 (Phase 1, ai-radar 0.2): articles に normalized_url / thread_id / cluster_id を追加
 #                              (dedup 5層化と引用元/時系列クラスタリング)
 #   v4 (Phase 2, ai-radar 0.2): articles に is_hype, sources に tier を追加
+#   v5 (Phase 3, ai-radar 0.3): benchmark_snapshots テーブルを追加
+#                              (LMArena / MTEB / GitHub Trending の snapshot + diff)
 
 _SCHEMA_SQL = """
 PRAGMA journal_mode = WAL;
@@ -121,6 +123,24 @@ CREATE TABLE IF NOT EXISTS article_notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_channel ON article_notifications(channel);
 CREATE INDEX IF NOT EXISTS idx_notifications_article ON article_notifications(article_id);
+
+-- v5 (Phase 3): ベンチマーク / Trending の snapshot.
+-- entries_json は ``[{"rank": int, "identifier": str, "score": float|None,
+-- "payload": {...}}, ...]`` の JSON. 直前 snapshot との diff は呼び出し側で計算する.
+CREATE TABLE IF NOT EXISTS benchmark_snapshots (
+    id INTEGER PRIMARY KEY,
+    source_slug TEXT NOT NULL,
+    category TEXT NOT NULL,
+    captured_at INTEGER NOT NULL,
+    display_name TEXT NOT NULL,
+    entries_json TEXT NOT NULL,
+    notified INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(source_slug, captured_at)
+);
+CREATE INDEX IF NOT EXISTS idx_bench_source_time
+    ON benchmark_snapshots(source_slug, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bench_notified
+    ON benchmark_snapshots(notified, captured_at DESC);
 """
 
 
@@ -227,3 +247,7 @@ def _migrate(conn: sqlite3.Connection, *, from_version: int) -> None:
         src_cols = {row["name"] for row in conn.execute("PRAGMA table_info(sources)")}
         if "tier" not in src_cols:
             conn.execute("ALTER TABLE sources ADD COLUMN tier INTEGER NOT NULL DEFAULT 3")
+    if from_version < 5:
+        # v4 → v5 (Phase 3): benchmark_snapshots テーブル.
+        # `_SCHEMA_SQL` の CREATE TABLE IF NOT EXISTS で既に作成済み. 何もしない.
+        pass

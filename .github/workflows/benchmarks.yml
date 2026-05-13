@@ -1,0 +1,80 @@
+name: Track benchmarks (Phase 3)
+
+# cron: 22:00 JST (UTC = 13:00) — 通常 crawl とは別時間帯にずらして衝突回避.
+# crawl.yml は DB を release artifact に保存するため、benchmarks.yml も
+# 同じ release を read/write する.
+on:
+  schedule:
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "特定 slug のみ取得 (空欄で全 fetcher)"
+        type: string
+        default: ""
+      dry_run:
+        description: "DB 保存と Discord 配信をスキップ"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # release upload
+  id-token: write
+
+concurrency:
+  group: "benchmarks"
+  cancel-in-progress: false
+
+jobs:
+  track:
+    name: Fetch + diff + notify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Restore previous DB from Releases (if exists)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          uv run python scripts/publish_release.py \
+            --mode download \
+            --repo "${{ github.repository }}" \
+            --download-to data/articles.db || echo "No previous release; starting fresh"
+
+      - name: Track benchmarks + GitHub Trending
+        env:
+          AI_RADAR_DISCORD_WEBHOOK_BENCHMARK: ${{ secrets.AI_RADAR_DISCORD_WEBHOOK_BENCHMARK }}
+          AI_RADAR_DISCORD_WEBHOOK_TREND: ${{ secrets.AI_RADAR_DISCORD_WEBHOOK_TREND }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.source }}" ]; then
+            ARGS="--source ${{ inputs.source }}"
+          fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          uv run python scripts/track_benchmarks.py $ARGS
+
+      - name: Publish DB snapshot to GH Releases
+        if: ${{ inputs.dry_run != true }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          uv run python scripts/publish_release.py \
+            --mode full \
+            --repo "${{ github.repository }}" \
+            --retention-days 7

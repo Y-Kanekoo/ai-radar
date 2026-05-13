@@ -163,9 +163,9 @@ def test_v2_to_v3_migration_adds_columns(tmp_path: Path) -> None:
         assert "normalized_url" in cols_after
         assert "thread_id" in cols_after
         assert "cluster_id" in cols_after
-        # schema_version が最新 (Phase 2 で v4) になっている
+        # schema_version が最新 (Phase 3 で v5) になっている
         row = conn.execute("SELECT version FROM schema_version").fetchone()
-        assert row["version"] == 4
+        assert row["version"] == 5
     finally:
         conn.close()
 
@@ -225,7 +225,7 @@ def test_v3_to_v4_migration(tmp_path: Path) -> None:
         assert "is_hype" in a_cols
         assert "tier" in s_cols
         row = conn.execute("SELECT version FROM schema_version").fetchone()
-        assert row["version"] == 4
+        assert row["version"] == 5
     finally:
         conn.close()
 
@@ -244,7 +244,101 @@ def test_v2_to_v3_migration_is_idempotent(tmp_path: Path) -> None:
     conn2 = init_db(db_path)
     try:
         row = conn2.execute("SELECT version FROM schema_version").fetchone()
-        # 最新スキーマへ更新される (Phase 2 で v4)
-        assert row["version"] == 4
+        # 最新スキーマへ更新される (Phase 3 で v5)
+        assert row["version"] == 5
     finally:
         conn2.close()
+
+
+# ---------------- Phase 3: v5 マイグレーション ----------------
+
+
+def test_v5_benchmark_snapshots_table_in_fresh_db(tmp_path: Path) -> None:
+    """新規 DB は benchmark_snapshots テーブルと index を持つ."""
+    conn = init_db(tmp_path / "test.db")
+    try:
+        rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        names = {r["name"] for r in rows}
+        assert "benchmark_snapshots" in names
+
+        idx = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='benchmark_snapshots'"
+        ).fetchall()
+        idx_names = {r["name"] for r in idx}
+        assert "idx_bench_source_time" in idx_names
+        assert "idx_bench_notified" in idx_names
+    finally:
+        conn.close()
+
+
+def test_v4_to_v5_migration(tmp_path: Path) -> None:
+    """v4 既存 DB を v5 のコードで開くと benchmark_snapshots テーブルが追加される."""
+    import sqlite3
+
+    db_path = tmp_path / "test.db"
+
+    # v4 相当のスキーマ (Phase 2 までの状態)
+    raw = sqlite3.connect(db_path)
+    raw.executescript("""
+        CREATE TABLE sources (
+            id INTEGER PRIMARY KEY, slug TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+            feed_url TEXT NOT NULL, site_url TEXT, language TEXT NOT NULL,
+            category TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+            last_fetched_at INTEGER, last_etag TEXT, last_modified TEXT,
+            consecutive_errors INTEGER DEFAULT 0,
+            tier INTEGER NOT NULL DEFAULT 3
+        );
+        CREATE TABLE articles (
+            id INTEGER PRIMARY KEY, guid TEXT NOT NULL,
+            source_id INTEGER NOT NULL REFERENCES sources(id),
+            url TEXT NOT NULL, title TEXT NOT NULL, snippet TEXT NOT NULL,
+            body_hash TEXT NOT NULL, body TEXT, author TEXT,
+            published_at INTEGER NOT NULL, fetched_at INTEGER NOT NULL,
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            normalized_url TEXT, thread_id INTEGER, cluster_id INTEGER,
+            is_hype INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(source_id, guid)
+        );
+        CREATE TABLE schema_version (version INTEGER PRIMARY KEY);
+        INSERT INTO schema_version(version) VALUES (4);
+    """)
+    raw.commit()
+    raw.close()
+
+    # init_db で v5 に upgrade
+    conn = init_db(db_path)
+    try:
+        rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        names = {r["name"] for r in rows}
+        assert "benchmark_snapshots" in names
+        row = conn.execute("SELECT version FROM schema_version").fetchone()
+        assert row["version"] == 5
+    finally:
+        conn.close()
+
+
+def test_benchmark_snapshots_unique_constraint(tmp_path: Path) -> None:
+    """(source_slug, captured_at) UNIQUE 制約が効く."""
+    import sqlite3
+
+    conn = init_db(tmp_path / "test.db")
+    try:
+        conn.execute(
+            "INSERT INTO benchmark_snapshots "
+            "(source_slug, category, captured_at, display_name, entries_json) "
+            "VALUES ('lmarena_text', 'benchmark', 1700000000, 'LMArena', '[]')"
+        )
+        conn.commit()
+        # 同 (slug, captured_at) は失敗
+        try:
+            conn.execute(
+                "INSERT INTO benchmark_snapshots "
+                "(source_slug, category, captured_at, display_name, entries_json) "
+                "VALUES ('lmarena_text', 'benchmark', 1700000000, 'LMArena', '[]')"
+            )
+            conn.commit()
+            raise AssertionError("UNIQUE 制約が効いていない")
+        except sqlite3.IntegrityError:
+            pass
+    finally:
+        conn.close()

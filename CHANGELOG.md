@@ -6,6 +6,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Phase 3 — Benchmark snapshots + GitHub Trending (2026-05-13)
+
+#### Added
+
+- **DB スキーマ v5**: `benchmark_snapshots` テーブル + index 2 個を追加.
+  v4→v5 を `_premigrate_columns_if_needed` / `_migrate` で自動 ALTER.
+- **`crawler/benchmarks/` パッケージ** (registry + fetcher 3 個):
+  - `BenchmarkEntry` / `BenchmarkSnapshot` の frozen dataclass.
+  - `@register(slug)` デコレータで lazy import. scrapers 層と同形.
+  - `_util.py`: HF Datasets Server URL 組み立て + JSON/text retry helper
+    (501 LockedDatasetTimeoutError を指数バックオフで吸収).
+  - `fetchers/lmarena.py`: `lmarena-ai/leaderboard-dataset` の `text_style_control`
+    から `category=="overall"` 上位 20 を取得.
+  - `fetchers/mteb.py`: `mteb/results/paths.json` からモデル → 評価ファイル数を
+    score として、上位 30 を取得 (登録モデル snapshot).
+  - `fetchers/github_trending.py`: `github.com/trending` (daily) を BeautifulSoup
+    でスクレイプ + AI キーワードフィルタ. 上位 25 を取得.
+  - `diff.py`: 直前 snapshot との差分 (new / rank_up / rank_down / dropped) を
+    `min_rank_delta=2` で計算. 1 位の揺らぎはノイズとして除外.
+  - `store.py`: snapshot 保存・取得・notified フラグ管理.
+- **`publisher/benchmark_discord.py`**: snapshot diff を 1 embed で配信する層.
+  category=`benchmark` (緑) / `trend` (橙) で色分け. 47条の5境界遵守 (identifier と
+  公開数値のみ, body は含めない).
+- **`scripts/track_benchmarks.py`**: CLI. 全 fetcher 並列実行 → diff 計算 → 配信 →
+  `notified=1` セット. ``--source`` / ``--dry-run`` / ``--min-rank-delta`` 対応.
+- **`.github/workflows/benchmarks.yml`**: 22:00 JST cron (UTC 13:00). crawl.yml と
+  別時間帯にずらし、同じ release DB を read/write.
+
+#### Changed
+
+- 7-channel Discord webhook 構成 (Phase 1) の ``benchmark`` / ``trend`` channel が
+  実装対象に. `AI_RADAR_DISCORD_WEBHOOK_BENCHMARK` / `AI_RADAR_DISCORD_WEBHOOK_TREND`
+  を GitHub Actions secrets として登録すれば配信される.
+
+#### Deferred to Phase 3.5
+
+- Open LLM Leaderboard: v1 contents が 2024 年で更新停止、Space は runtime error.
+  v2 の存在を確認できず一旦保留.
+- HELM / BigCodeBench / AlpacaEval: 追加スコープ.
+
+#### Tests
+
+- 404 passed / 2 skipped (Phase 2 比 +54)、ruff format + check 緑化.
+  内訳: registry 4 / diff 8 / fetchers parse 12 / store 8 / discord embed 8 /
+  util retry 8 / DB v5 migration 3 / 既存 test_db.py 等 v5 assert 3.
+
 ### Phase 2 — Trust-tier scoring + Hype filter + LLM fallback (2026-05-13)
 
 #### Added
