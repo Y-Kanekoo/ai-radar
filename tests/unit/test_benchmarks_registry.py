@@ -16,6 +16,13 @@ def test_registered_slugs_includes_all_phase3() -> None:
     assert "github_trending_daily" in slugs
 
 
+def test_registered_slugs_includes_phase35() -> None:
+    """Phase 3.5 の 2 fetcher (BigCodeBench / AlpacaEval) も登録されている."""
+    slugs = registered_slugs()
+    assert "bigcodebench" in slugs
+    assert "alpaca_eval" in slugs
+
+
 def test_get_fetcher_returns_callable_for_registered_slug() -> None:
     """登録 slug は callable を返す."""
     fn = get_fetcher("lmarena_text")

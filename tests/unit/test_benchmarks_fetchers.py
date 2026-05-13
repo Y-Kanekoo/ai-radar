@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ai_radar.crawler.benchmarks.fetchers.alpaca_eval import _parse_csv as _alpaca_parse
+from ai_radar.crawler.benchmarks.fetchers.bigcodebench import _parse_rows as _bcb_parse
 from ai_radar.crawler.benchmarks.fetchers.github_trending import (
     _is_ai_related,
     _parse_int_with_commas,
@@ -197,3 +199,123 @@ def test_parse_trending_extracts_stars_and_language() -> None:
 def test_parse_trending_empty_html_yields_empty() -> None:
     """空 HTML は空."""
     assert _parse_trending("<html></html>") == []
+
+
+# ---------------- BigCodeBench (Phase 3.5) ----------------
+
+
+def test_bigcodebench_parse_rows_sorted_by_complete_desc() -> None:
+    """complete score 降順で rank が振られる."""
+    rows = [
+        {"row": {"model": "B", "complete": 30.0, "instruct": 20.0, "type": "🟢"}},
+        {"row": {"model": "A", "complete": 50.0, "instruct": 40.0, "type": "🟢"}},
+        {"row": {"model": "C", "complete": 10.0, "instruct": 5.0, "type": "🔶"}},
+    ]
+    entries = _bcb_parse(rows)
+    assert [e.identifier for e in entries] == ["A", "B", "C"]
+    assert [e.rank for e in entries] == [1, 2, 3]
+    assert entries[0].score == 50.0
+
+
+def test_bigcodebench_parse_rows_skips_null_complete() -> None:
+    """complete が null のモデルは順位対象外."""
+    rows = [
+        {"row": {"model": "X", "complete": None, "instruct": 30.0}},
+        {"row": {"model": "Y", "complete": 25.0, "instruct": 15.0}},
+    ]
+    entries = _bcb_parse(rows)
+    assert [e.identifier for e in entries] == ["Y"]
+
+
+def test_bigcodebench_parse_rows_attaches_payload() -> None:
+    """link / instruct / size / date / type が payload に入る."""
+    rows = [
+        {
+            "row": {
+                "model": "M",
+                "link": "https://hf.co/m",
+                "complete": 47.6,
+                "instruct": 36.2,
+                "size": 6.7,
+                "act_param": 6.7,
+                "type": "🔶",
+                "date": "2024-12-04",
+            }
+        }
+    ]
+    entries = _bcb_parse(rows)
+    e = entries[0]
+    assert e.payload["link"] == "https://hf.co/m"
+    assert e.payload["type"] == "🔶"
+    assert e.payload["date"] == "2024-12-04"
+    assert e.payload["instruct"] == "36.2"
+    assert e.payload["size"] == "6.7"
+
+
+def test_bigcodebench_parse_rows_skips_blank_model_name() -> None:
+    """model が空文字の行は skip."""
+    rows = [
+        {"row": {"model": "  ", "complete": 50.0}},
+        {"row": {"model": "Z", "complete": 40.0}},
+    ]
+    entries = _bcb_parse(rows)
+    assert [e.identifier for e in entries] == ["Z"]
+
+
+# ---------------- AlpacaEval (Phase 3.5) ----------------
+
+
+_ALPACA_CSV = (
+    ",win_rate,standard_error,n_wins,n_wins_base,n_draws,n_total,mode,avg_length,"
+    "discrete_win_rate,length_controlled_winrate\n"
+    "gpt4_1106_preview,97.7,0.5,783,16,5,804,minimal,2049,97.7,89.9\n"
+    "claude-3-opus,95.0,0.7,765,35,1,801,community,1775,95.0,92.0\n"
+    "mistral-medium,96.8,0.6,779,25,1,805,minimal,1500,96.8,91.5\n"
+    "broken-row-empty-lc,90.0,0.7,700,100,5,805,minimal,1500,90.0,\n"
+)
+
+
+def test_alpaca_parse_csv_sorts_by_length_controlled_winrate_desc() -> None:
+    """length_controlled_winrate 降順で rank. LC 欠損行は win_rate にフォールバックして混在."""
+    entries = _alpaca_parse(_ALPACA_CSV)
+    # 並び:
+    #   claude-3-opus (LC=92.0)
+    #   mistral-medium (LC=91.5)
+    #   broken-row-empty-lc (LC 空 → win_rate 90.0 fallback)
+    #   gpt4_1106_preview (LC=89.9)
+    ids = [e.identifier for e in entries]
+    assert ids[0] == "claude-3-opus"
+    assert ids[1] == "mistral-medium"
+    assert ids[2] == "broken-row-empty-lc"
+    assert ids[3] == "gpt4_1106_preview"
+
+
+def test_alpaca_parse_csv_falls_back_to_win_rate_when_lc_empty() -> None:
+    """LC 列が空欄なら win_rate を score に使う (broken-row-empty-lc は 90.0 として残る)."""
+    entries = _alpaca_parse(_ALPACA_CSV)
+    found = [e for e in entries if e.identifier == "broken-row-empty-lc"]
+    assert len(found) == 1
+    assert found[0].score == 90.0
+
+
+def test_alpaca_parse_csv_attaches_payload() -> None:
+    """win_rate / n_total / mode / avg_length が payload."""
+    entries = _alpaca_parse(_ALPACA_CSV)
+    by_id = {e.identifier: e for e in entries}
+    e = by_id["claude-3-opus"]
+    assert e.payload["win_rate"] == "95.0"
+    assert e.payload["n_total"] == "801"
+    assert e.payload["mode"] == "community"
+    assert e.payload["avg_length"] == "1775"
+
+
+def test_alpaca_parse_csv_empty_input_yields_empty() -> None:
+    """空入力なら空."""
+    assert _alpaca_parse("") == []
+
+
+def test_alpaca_parse_csv_skips_unparseable_score() -> None:
+    """LC も win_rate も空なら skip."""
+    csv = ",win_rate,length_controlled_winrate\nvalid,80.0,75.0\nbroken,,\n"
+    entries = _alpaca_parse(csv)
+    assert [e.identifier for e in entries] == ["valid"]

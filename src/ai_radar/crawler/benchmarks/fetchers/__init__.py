@@ -8,6 +8,8 @@ from __future__ import annotations
 
 # 並びは slug の ABC 順 (registered_slugs() の安定化用).
 from ai_radar.crawler.benchmarks.fetchers import (  # noqa: F401
+    alpaca_eval,
+    bigcodebench,
     github_trending,
     lmarena,
     mteb,

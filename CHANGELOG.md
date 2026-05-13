@@ -6,6 +6,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Phase 3.5 — BigCodeBench + AlpacaEval fetchers (2026-05-13)
+
+#### Added
+
+- **`fetchers/bigcodebench.py`**: `bigcode/bigcodebench-results` HF dataset から
+  `complete` (Complete subset) 降順上位 25 を snapshot 化. `instruct` / `size` /
+  `link` / `date` / `type` は payload に同梱.
+- **`fetchers/alpaca_eval.py`**: tatsu-lab/alpaca_eval GitHub raw CSV
+  (`alpaca_eval_gpt4_leaderboard.csv`) を csv 標準ライブラリで parse.
+  primary metric は `length_controlled_winrate`, 空欄は `win_rate` にフォールバック.
+- fetchers/__init__.py に 2 fetcher を追加し registry で公開.
+
+#### Deferred (再び Phase 3.5+ へ)
+
+- **Open LLM Leaderboard v2**: `HuggingFaceH4/open_llm_leaderboard_v2` も
+  `open-llm-leaderboard/contents-v2` も 401 で取得不可 → 廃止 / 統合された可能性.
+- **HELM lite**: 公開 raw データ URL 不明、追加調査要.
+
+#### Verified
+
+- production URL に対する初回 fetch 成功 (advisor 助言遵守):
+  - BigCodeBench: 25 entries, top = GPT-4o-2024-05-13 (complete=61.1)
+  - AlpacaEval: 25 entries, top = xwinlm-70b-v0.1 (win_rate fallback)
+
+#### Tests
+
+- 418 passed / 2 skipped (Phase 3 比 +10)、ruff format + check 緑化.
+  内訳: registry 1 / BigCodeBench parse 4 / AlpacaEval parse 5.
+
 ### Phase 3 — Benchmark snapshots + GitHub Trending (2026-05-13)
 
 #### Added
