@@ -38,9 +38,7 @@ def parse_hf_papers(content: bytes) -> list[ParsedItem]:
     canonical = soup.find("link", rel="canonical")
     href = canonical.get("href", "") if canonical else ""
     date_match = _DATE_IN_URL.search(href) or _DATE_IN_URL.search(title_text)
-    published_struct = (
-        parse_date_to_struct(date_match.group(1)) if date_match else now_utc_struct()
-    )
+    published_struct = parse_date_to_struct(date_match.group(1)) if date_match else now_utc_struct()
 
     for a in soup.select('h3 a[href^="/papers/"]'):
         href = a.get("href", "")

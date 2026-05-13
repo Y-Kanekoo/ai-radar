@@ -24,9 +24,7 @@ def _find_title(article: Tag) -> str:
     """
     for p in article.find_all("p"):
         classes = p.get("class") or []
-        is_title_class = any(
-            c in ("type-md", "type-md-lg", "type-base") for c in classes
-        )
+        is_title_class = any(c in ("type-md", "type-md-lg", "type-base") for c in classes)
         is_snippet = any("text-theme-text-sec" in c for c in classes)
         if is_title_class and not is_snippet:
             text = p.get_text(strip=True)
