@@ -118,14 +118,22 @@ source_tags:
 
 
 def test_real_yaml_has_source_tags_for_ai_sources() -> None:
-    """実際の tag_rules.yaml に Phase 0 主要ソースの source_tags が定義されている."""
+    """実際の tag_rules.yaml に Phase 0 / 0.5 主要ソースの source_tags が定義されている."""
     config = load_tagger_config()
+    # Phase 0 (RSS)
     assert config.get_source_tags("huggingface-blog") == ("release",)
     assert config.get_source_tags("google-research-blog") == ("paper", "release")
     assert config.get_source_tags("arxiv-cs-lg") == ("paper",)
     assert config.get_source_tags("tldr-ai") == ("opinion",)
     assert config.get_source_tags("windsurf-blog") == ("release", "tool")
     assert config.get_source_tags("midjourney-updates") == ("release", "multimodal")
+    # Phase 0.5 追加 (1 RSS + 8 scraper)
+    assert config.get_source_tags("sakana-ai") == ("release", "paper")
+    assert config.get_source_tags("anthropic-news") == ("release", "llm", "safety")
+    assert config.get_source_tags("hf-papers") == ("paper", "benchmark")
+    assert config.get_source_tags("cursor-blog") == ("release", "tool", "agent")
+    assert config.get_source_tags("ai2-blog") == ("paper", "release")
+    assert config.get_source_tags("luma-news") == ("release", "multimodal")
 
 
 def test_empty_yaml_returns_empty_config(tmp_path: Path) -> None:

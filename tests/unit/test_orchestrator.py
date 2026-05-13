@@ -22,7 +22,11 @@ ATOM_2_ENTRIES = """<?xml version="1.0" encoding="UTF-8"?>
 </feed>""".encode()
 
 
-def _src(slug: str = "t1", min_interval: int = 0) -> SourceConfig:
+def _src(
+    slug: str = "t1",
+    min_interval: int = 0,
+    fetch_kind: str = "rss",
+) -> SourceConfig:
     return SourceConfig(
         slug=slug,
         name="T",
@@ -33,6 +37,7 @@ def _src(slug: str = "t1", min_interval: int = 0) -> SourceConfig:
         enabled=True,
         fetch_policy=FetchPolicy(min_interval_seconds=min_interval, max_items_per_fetch=30),
         license_note="ok",
+        fetch_kind=fetch_kind,
     )
 
 
@@ -366,3 +371,84 @@ async def test_run_crawl_owns_client_when_none(tmp_path: Path) -> None:
     finally:
         conn.close()
     assert result.errors  # 接続失敗が記録される
+
+
+# ---------------- Phase 0.5: scraper 経路 ----------------
+
+
+@pytest.mark.asyncio
+async def test_scraper_path_inserts_articles(tmp_path: Path) -> None:
+    """fetch_kind=scraper のソースは HTML から記事を抽出して DB に保存できる."""
+    # bfl-news の最小 HTML (test_scraper.py の fixture と同形)
+    html = b"""<html><body>
+<article id="blog-post-1">
+  <h2>FLUX.2 [klein]</h2>
+  <time datetime="2026-01-15T15:00:00.000Z">January 15, 2026</time>
+  <p class="text-bf-body-2-regular">Introducing FLUX.2.</p>
+  <a href="/blog/flux2-klein"></a>
+</article>
+</body></html>"""
+    transport = httpx.MockTransport(lambda req: httpx.Response(200, content=html))
+
+    src = SourceConfig(
+        slug="bfl-news",
+        name="BFL",
+        feed_url="https://bfl.ai/blog",
+        site_url=None,
+        language="en",
+        category="release",
+        enabled=True,
+        fetch_policy=FetchPolicy(min_interval_seconds=0, max_items_per_fetch=10),
+        license_note="ok",
+        fetch_kind="scraper",
+    )
+
+    async with httpx.AsyncClient(transport=transport) as client:
+        conn = init_db(tmp_path / "test.db")
+        try:
+            result = await run_crawl(
+                conn,
+                [src],
+                BlockedConfig(frozenset()),
+                client=client,
+            )
+        finally:
+            conn.close()
+
+    assert result.sources_processed == 1
+    assert result.articles_added == 1
+    assert result.errors == []
+
+
+@pytest.mark.asyncio
+async def test_scraper_path_with_unregistered_slug_records_error(tmp_path: Path) -> None:
+    """未登録 slug + scraper 指定は parse_error で記録される."""
+    transport = httpx.MockTransport(
+        lambda req: httpx.Response(200, content=b"<html><body></body></html>")
+    )
+    src = SourceConfig(
+        slug="completely-unknown-slug",
+        name="Unknown",
+        feed_url="https://example.com/x",
+        site_url=None,
+        language="en",
+        category="release",
+        enabled=True,
+        fetch_policy=FetchPolicy(min_interval_seconds=0, max_items_per_fetch=10),
+        license_note="ok",
+        fetch_kind="scraper",
+    )
+    async with httpx.AsyncClient(transport=transport) as client:
+        conn = init_db(tmp_path / "test.db")
+        try:
+            result = await run_crawl(
+                conn,
+                [src],
+                BlockedConfig(frozenset()),
+                client=client,
+            )
+        finally:
+            conn.close()
+    assert result.articles_added == 0
+    assert result.errors
+    assert result.errors[0]["reason"] == "parse_error"

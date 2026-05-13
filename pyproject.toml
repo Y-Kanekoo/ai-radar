@@ -37,6 +37,9 @@ dependencies = [
     "pyyaml>=6.0",
     "mcp>=1.27",
     "platformdirs>=4.0",
+    # Phase 0.5: RSS 無しソース向け HTML スクレイピング
+    "beautifulsoup4>=4.12",
+    "python-dateutil>=2.9",
 ]
 
 [project.optional-dependencies]

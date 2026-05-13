@@ -14,14 +14,14 @@ from ai_radar.sources import (
 )
 
 
-def test_loads_11_sources_from_real_yaml() -> None:
-    """実際の config/sources.yaml が Phase 0 の 11 ソースで正常パース.
+def test_loads_20_sources_from_real_yaml() -> None:
+    """実際の config/sources.yaml が Phase 0.5 の 20 ソースで正常パース.
 
-    Phase 0.5 (scraper layer 追加) 以降は 20+ ソースに増加予定. その時点で
-    本テストの期待値を更新する.
+    内訳: Phase 0 (11 sources, RSS) + Phase 0.5 (9 sources, 1 RSS + 8 scraper).
+    Phase 3 以降の追加で更新.
     """
     sources = load_sources()
-    assert len(sources) == 11
+    assert len(sources) == 20
 
 
 def test_all_sources_have_required_fields() -> None:
@@ -46,17 +46,90 @@ def test_slugs_are_unique() -> None:
 
 
 def test_critical_sources_present() -> None:
-    """Phase 0 コアソースが含まれている."""
+    """Phase 0 + Phase 0.5 コアソースが含まれている."""
     slugs = {s.slug for s in load_sources()}
     must = {
+        # Phase 0 (RSS)
         "huggingface-blog",
         "google-research-blog",
         "arxiv-cs-lg",
         "tldr-ai",
         "stockmark-blog",
+        # Phase 0.5 (scraper + 1 RSS)
+        "anthropic-news",
+        "hf-papers",
+        "cursor-blog",
+        "sakana-ai",
     }
     missing = must - slugs
     assert not missing, f"必須ソースが欠落: {missing}"
+
+
+def test_phase05_scraper_sources_have_correct_fetch_kind() -> None:
+    """Phase 0.5 で追加した 8 scraper ソースが fetch_kind='scraper' になっている."""
+    by_slug = {s.slug: s for s in load_sources()}
+    scraper_slugs = {
+        "anthropic-news",
+        "hf-papers",
+        "cursor-blog",
+        "elyza-news",
+        "ai2-blog",
+        "kimi-blog",
+        "luma-news",
+        "bfl-news",
+    }
+    for slug in scraper_slugs:
+        assert by_slug[slug].fetch_kind == "scraper", (
+            f"{slug}: fetch_kind={by_slug[slug].fetch_kind!r} (期待: scraper)"
+        )
+    # Sakana AI は feed.xml なので RSS
+    assert by_slug["sakana-ai"].fetch_kind == "rss"
+
+
+def test_default_fetch_kind_is_rss() -> None:
+    """既存 11 ソース (yaml に fetch_kind 未指定) は デフォルト 'rss'."""
+    by_slug = {s.slug: s for s in load_sources()}
+    rss_slugs = {
+        "huggingface-blog",
+        "google-research-blog",
+        "microsoft-ai-news",
+        "arxiv-cs-lg",
+        "tldr-ai",
+        "bens-bites",
+        "latent-space",
+        "windsurf-blog",
+        "replit-blog",
+        "midjourney-updates",
+        "stockmark-blog",
+    }
+    for slug in rss_slugs:
+        assert by_slug[slug].fetch_kind == "rss", (
+            f"{slug}: fetch_kind={by_slug[slug].fetch_kind!r} (期待: rss)"
+        )
+
+
+def test_invalid_fetch_kind_raises(tmp_path: Path) -> None:
+    """sources.yaml の fetch_kind が 'rss'/'scraper' 以外なら ValueError."""
+    yaml_text = """
+version: 1
+sources:
+  - slug: bad
+    name: Bad
+    feed_url: https://e.com/feed
+    site_url: https://e.com
+    language: en
+    category: release
+    fetch_kind: api
+    enabled: true
+    fetch_policy:
+      min_interval_seconds: 0
+      max_items_per_fetch: 10
+    license_note: ok
+"""
+    p = tmp_path / "bad.yaml"
+    p.write_text(yaml_text, encoding="utf-8")
+    with pytest.raises(ValueError, match="fetch_kind"):
+        load_sources(p)
 
 
 def test_load_blocked_real_yaml() -> None:

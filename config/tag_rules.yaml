@@ -329,6 +329,7 @@ anti_tags:
 # 該当 slug のソースから取得した記事には以下のタグが必ず付与される.
 # requires_co_tag バイパス. キーワードベースのタグはこれに上乗せされる.
 source_tags:
+  # Phase 0 (11 sources, RSS only)
   huggingface-blog: [release]
   google-research-blog: [paper, release]
   microsoft-ai-news: [release]
@@ -340,3 +341,13 @@ source_tags:
   replit-blog: [release, tool]
   midjourney-updates: [release, multimodal]
   stockmark-blog: [release]
+  # Phase 0.5 追加 (9 sources, 1 RSS + 8 scraper)
+  sakana-ai: [release, paper]
+  anthropic-news: [release, llm, safety]
+  hf-papers: [paper, benchmark]
+  cursor-blog: [release, tool, agent]
+  elyza-news: [release]
+  ai2-blog: [paper, release]
+  kimi-blog: [release, llm]
+  luma-news: [release, multimodal]
+  bfl-news: [release, multimodal]

@@ -1,4 +1,4 @@
-# ai-radar ソースリスト（Phase 0、11本、RSS直取りのみ）
+# ai-radar ソースリスト（Phase 0.5、20本、RSS 12 + scraper 8）
 #
 # スキーマ:
 #   slug:       一意ID (snake_case 推奨、DB の sources.slug に保存)
@@ -16,9 +16,10 @@
 #     max_items_per_fetch:    1回の取得で読む上限
 #   license_note:             利用規約上の集約可否についてのメモ
 #
-# 全URLは 2026-05-13 時点で WebFetch で実物確認済み（200応答 + 直近3ヶ月の更新確認）.
-# スクレイピングが必要なソース (Anthropic, HF Papers, Cursor, Sakana, ELYZA, AI2, Kimi,
-# Luma, BFL) は Phase 0.5 (scraper レイヤー実装後) で追加.
+# 全URLは 2026-05-13 時点で WebFetch + curl で実物確認済み (200応答 + DOM 構造解析済み).
+# Sakana AI は Phase 0 検証時に見落としていた `feed.xml` (Atom) が利用可能なので RSS 経路.
+# Anthropic / HF Papers / Cursor / ELYZA / AI2 / Kimi / Luma / BFL は fetch_kind: scraper
+# (per-source HTML parser を `src/ai_radar/crawler/scrapers/{slug}.py` に実装).
 # OpenAI は 403 ロックアウトのため Phase 1 で Wayback Machine 経由実装を予定.
 
 version: 1
@@ -169,3 +170,118 @@ sources:
     enabled: true
     fetch_policy: { min_interval_seconds: 86400, max_items_per_fetch: 15 }
     license_note: 公開RSS、出所明示+リンクバックで集約可
+
+  # ============================================================
+  # Phase 0.5 追加 (1): Sakana AI Atom フィード
+  # ============================================================
+
+  - slug: sakana-ai
+    name: Sakana AI Blog
+    feed_url: https://sakana.ai/feed.xml
+    site_url: https://sakana.ai/blog/
+    language: en
+    category: release
+    tier: 1
+    enabled: true
+    fetch_policy: { min_interval_seconds: 86400, max_items_per_fetch: 20 }
+    license_note: Jekyll 標準の公開 Atom フィード、出所明示+リンクバックで集約可
+
+  # ============================================================
+  # Phase 0.5 追加 (8): HTML スクレイパー (fetch_kind: scraper)
+  # ============================================================
+
+  - slug: anthropic-news
+    name: Anthropic News
+    feed_url: https://www.anthropic.com/news
+    site_url: https://www.anthropic.com/news
+    language: en
+    category: release
+    tier: 1
+    enabled: true
+    fetch_kind: scraper
+    fetch_policy: { min_interval_seconds: 43200, max_items_per_fetch: 15 }
+    license_note: 公開 HTML、出所明示+リンクバックで集約可。Tier1 必須監視
+
+  - slug: hf-papers
+    name: Hugging Face Papers (Daily)
+    feed_url: https://huggingface.co/papers
+    site_url: https://huggingface.co/papers
+    language: en
+    category: paper
+    tier: 1
+    enabled: true
+    fetch_kind: scraper
+    fetch_policy: { min_interval_seconds: 21600, max_items_per_fetch: 15 }
+    license_note: 公開 HTML、HF コミュニティ投票で品質保証、出所明示で集約可
+
+  - slug: cursor-blog
+    name: Cursor Blog & Changelog
+    feed_url: https://cursor.com/blog
+    site_url: https://cursor.com/blog
+    language: en
+    category: tool
+    tier: 1
+    enabled: true
+    fetch_kind: scraper
+    fetch_policy: { min_interval_seconds: 43200, max_items_per_fetch: 20 }
+    license_note: 公開 HTML、AI Code Editor 競合監視、出所明示で集約可
+
+  - slug: elyza-news
+    name: ELYZA News
+    feed_url: https://elyza.ai/news
+    site_url: https://elyza.ai/news
+    language: ja
+    category: jp
+    tier: 1
+    enabled: true
+    fetch_kind: scraper
+    fetch_policy: { min_interval_seconds: 86400, max_items_per_fetch: 15 }
+    license_note: 公開 HTML、日本AI核、出所明示+リンクバックで集約可
+
+  - slug: ai2-blog
+    name: Allen AI (AI2) Blog
+    feed_url: https://allenai.org/blog
+    site_url: https://allenai.org/blog
+    language: en
+    category: paper
+    tier: 1
+    enabled: true
+    fetch_kind: scraper
+    fetch_policy: { min_interval_seconds: 86400, max_items_per_fetch: 15 }
+    license_note: 公開 HTML、OLMo 等 OSS 公開モデル、出所明示で集約可
+
+  - slug: kimi-blog
+    name: Kimi (Moonshot AI) Blog
+    feed_url: https://www.kimi.com/blog/
+    site_url: https://www.kimi.com/blog/
+    language: en
+    category: release
+    tier: 2
+    enabled: true
+    fetch_kind: scraper
+    fetch_policy: { min_interval_seconds: 86400, max_items_per_fetch: 15 }
+    license_note: 公開 HTML (英語版)、中国系LLM動向、出所明示+リンクバックで集約可
+
+  - slug: luma-news
+    name: Luma AI News
+    feed_url: https://lumalabs.ai/news
+    site_url: https://lumalabs.ai/news
+    language: en
+    category: release
+    tier: 1
+    enabled: true
+    fetch_kind: scraper
+    fetch_policy: { min_interval_seconds: 86400, max_items_per_fetch: 15 }
+    license_note: 公開 HTML、動画/画像生成 (Dream Machine)、出所明示で集約可
+
+  - slug: bfl-news
+    name: Black Forest Labs (FLUX) Blog
+    feed_url: https://bfl.ai/blog
+    site_url: https://bfl.ai/blog
+    language: en
+    category: release
+    tier: 1
+    enabled: true
+    fetch_kind: scraper
+    fetch_policy: { min_interval_seconds: 86400, max_items_per_fetch: 15 }
+    license_note: 公開 HTML、FLUX 画像生成、出所明示で集約可

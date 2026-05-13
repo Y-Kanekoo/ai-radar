@@ -21,6 +21,7 @@ from ai_radar.crawler.normalize import (
     strip_html,
 )
 from ai_radar.crawler.parse import parse_feed
+from ai_radar.crawler.scraper import fetch_html, parse_html
 from ai_radar.crawler.store import (
     ArticleRow,
     finish_crawl_run,
@@ -91,12 +92,21 @@ async def _process_source(
         logger.warning("%s: robots.txt Disallow", source.slug)
         return (0, {"slug": source.slug, "reason": "robots_disallow"})
 
-    result = await fetch_feed(
-        source.feed_url,
-        etag=etag,
-        last_modified=last_modified,
-        client=client,
-    )
+    # Phase 0.5: fetch_kind で RSS/HTML を切り替える. 後段の dedup / tag / store は共通.
+    if source.fetch_kind == "scraper":
+        result = await fetch_html(
+            source.feed_url,
+            etag=etag,
+            last_modified=last_modified,
+            client=client,
+        )
+    else:
+        result = await fetch_feed(
+            source.feed_url,
+            etag=etag,
+            last_modified=last_modified,
+            client=client,
+        )
 
     if result.error:
         update_source_fetch_state(
@@ -132,7 +142,11 @@ async def _process_source(
             {"slug": source.slug, "reason": "unexpected_status", "status": result.status_code},
         )
 
-    parsed = parse_feed(result.content)
+    parsed = (
+        parse_html(result.content, source.slug)
+        if source.fetch_kind == "scraper"
+        else parse_feed(result.content)
+    )
     if parsed.bozo and not parsed.items:
         update_source_fetch_state(
             conn,

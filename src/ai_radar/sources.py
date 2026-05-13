@@ -27,7 +27,11 @@ class FetchPolicy:
 
 @dataclass(frozen=True)
 class SourceConfig:
-    """1ソースの定義 (sources.yaml の1エントリ)."""
+    """1ソースの定義 (sources.yaml の1エントリ).
+
+    fetch_kind="rss" (デフォルト) は feedparser 経路、"scraper" は
+    `crawler.scrapers` に登録された per-source HTML parser を使う.
+    """
 
     slug: str
     name: str
@@ -38,6 +42,8 @@ class SourceConfig:
     enabled: bool
     fetch_policy: FetchPolicy
     license_note: str
+    # Phase 0.5: scraper サポート. 旧 yaml との後方互換のためデフォルト "rss"
+    fetch_kind: str = "rss"
 
 
 @dataclass(frozen=True)
@@ -64,6 +70,12 @@ def load_sources(path: Path = DEFAULT_SOURCES_PATH) -> list[SourceConfig]:
     sources: list[SourceConfig] = []
     for entry in data.get("sources", []):
         fp = entry.get("fetch_policy", {})
+        fetch_kind = entry.get("fetch_kind", "rss")
+        if fetch_kind not in {"rss", "scraper"}:
+            raise ValueError(
+                f"{entry.get('slug')!r}: 不正な fetch_kind {fetch_kind!r} "
+                f"(rss | scraper のいずれか)"
+            )
         sources.append(
             SourceConfig(
                 slug=entry["slug"],
@@ -78,6 +90,7 @@ def load_sources(path: Path = DEFAULT_SOURCES_PATH) -> list[SourceConfig]:
                     max_items_per_fetch=int(fp.get("max_items_per_fetch", 30)),
                 ),
                 license_note=entry.get("license_note", ""),
+                fetch_kind=fetch_kind,
             )
         )
     return sources
