@@ -1,0 +1,342 @@
+# ai-radar タグ付けルール (AI 12タグ)
+#
+# 適用方針:
+#   1. 各記事に対し、title (重み2) + body (重み1) + tags_text (重み1) を小文字化して
+#      keywords を部分一致でマッチ
+#   2. 各 tag のスコアが threshold 以上で確定（デフォルト2）
+#   3. 1 記事あたり最大 max_tags 個まで（スコア降順）
+#   4. tool / opinion は requires_co_tag: true のため、他タグと併用時のみ付与
+#   5. ヒット 0 個の記事は別途 LLM フォールバックの対象（Phase 1）
+#   6. ハイプキーワード (hype_keywords) を含む Tier 4-5 記事は Phase 2 で ⚠️ マーク
+#
+# AI 固定 12 タグ:
+#   llm / agent / multimodal / rag / fine-tuning / benchmark / safety /
+#   regulation / paper / release / tool / opinion
+#
+# 共起ルール: 特定タグの組合せから別タグを自動補完する.
+
+version: 1
+
+defaults:
+  case_sensitive: false
+  max_tags: 4
+  threshold: 2
+  weight_title: 2
+  weight_body: 1
+  weight_tags_text: 1
+
+rules:
+  - tag: llm
+    keywords:
+      - llm
+      - "large language model"
+      - "language model"
+      - gpt
+      - "gpt-4"
+      - "gpt-5"
+      - claude
+      - "claude opus"
+      - "claude sonnet"
+      - "claude haiku"
+      - gemini
+      - "gemini pro"
+      - llama
+      - "llama 3"
+      - "llama 4"
+      - mistral
+      - mixtral
+      - qwen
+      - deepseek
+      - "言語モデル"
+      - "大規模言語モデル"
+
+  - tag: agent
+    keywords:
+      - "ai agent"
+      - "autonomous agent"
+      - "agentic"
+      - "tool use"
+      - "tool calling"
+      - "function calling"
+      - "llm agent"
+      - "react agent"
+      - "swe-agent"
+      - "browser agent"
+      - "computer use"
+      - mcp
+      - "model context protocol"
+      - "claude code"
+      - cursor
+      - copilot
+      - "github copilot"
+      - windsurf
+      - replit
+      - "エージェント"
+      - "ツール呼び出し"
+
+  - tag: multimodal
+    keywords:
+      - multimodal
+      - "vision-language"
+      - "vision language"
+      - "vlm"
+      - "image generation"
+      - "video generation"
+      - "text-to-image"
+      - "text-to-video"
+      - "speech-to-text"
+      - tts
+      - whisper
+      - flux
+      - midjourney
+      - sora
+      - runway
+      - "stable diffusion"
+      - dall-e
+      - "image-to-video"
+      - "マルチモーダル"
+      - "画像生成"
+      - "動画生成"
+
+  - tag: rag
+    keywords:
+      - rag
+      - "retrieval-augmented"
+      - "retrieval augmented"
+      - "vector search"
+      - "vector database"
+      - embedding
+      - embeddings
+      - "semantic search"
+      - chroma
+      - pinecone
+      - weaviate
+      - qdrant
+      - milvus
+      - "ベクトル検索"
+      - "ベクトルデータベース"
+      - "検索拡張"
+
+  - tag: fine-tuning
+    keywords:
+      - "fine-tuning"
+      - "fine tuning"
+      - finetuning
+      - lora
+      - peft
+      - qlora
+      - rlhf
+      - rlaif
+      - dpo
+      - sft
+      - "instruction-tuning"
+      - "instruction tuning"
+      - distillation
+      - "knowledge distillation"
+      - "ファインチューニング"
+      - "微調整"
+
+  - tag: benchmark
+    keywords:
+      - benchmark
+      - "eval suite"
+      - evaluation
+      - lmarena
+      - "lm arena"
+      - mmlu
+      - mteb
+      - helm
+      - bigcodebench
+      - alpacaeval
+      - swe-bench
+      - "open llm leaderboard"
+      - leaderboard
+      - sota
+      - "state-of-the-art"
+      - "state of the art"
+      - "ベンチマーク"
+      - "評価"
+
+  - tag: safety
+    keywords:
+      - "ai safety"
+      - alignment
+      - "constitutional ai"
+      - "red teaming"
+      - "red team"
+      - jailbreak
+      - "prompt injection"
+      - adversarial
+      - hallucination
+      - bias
+      - "responsible ai"
+      - "model card"
+      - "system card"
+      - "安全性"
+      - "アラインメント"
+      - "プロンプトインジェクション"
+      - "ハルシネーション"
+
+  - tag: regulation
+    keywords:
+      - "ai act"
+      - "eu ai act"
+      - "executive order"
+      - "white house"
+      - "ai governance"
+      - "ai policy"
+      - "ai regulation"
+      - compliance
+      - gdpr
+      - "data protection"
+      - copyright
+      - "規制"
+      - "ガバナンス"
+      - "個人情報保護"
+      - "知的財産"
+
+  - tag: paper
+    keywords:
+      - "arxiv.org"
+      - "arxiv:"
+      - preprint
+      - "we propose"
+      - "we present"
+      - "our method"
+      - neurips
+      - iclr
+      - icml
+      - "acl 20"
+      - emnlp
+      - "論文"
+      - "プレプリント"
+
+  - tag: release
+    keywords:
+      - released
+      - "now available"
+      - "general availability"
+      - launch
+      - launched
+      - announcing
+      - announced
+      - introducing
+      - "v1."
+      - "v2."
+      - "v3."
+      - "model release"
+      - "new model"
+      - "リリース"
+      - "発表"
+      - "公開"
+      - "提供開始"
+
+  - tag: tool
+    requires_co_tag: true
+    keywords:
+      - cli
+      - sdk
+      - "open source"
+      - "github.com/"
+      - "pip install"
+      - "npm install"
+      - extension
+      - vscode
+      - ide
+      - "developer tool"
+      - "developer experience"
+      - "ツール"
+
+  - tag: opinion
+    requires_co_tag: true
+    keywords:
+      - "we think"
+      - "we believe"
+      - "i believe"
+      - "in my opinion"
+      - perspective
+      - "thoughts on"
+      - "why "
+      - "the future of"
+      - "lessons learned"
+      - retrospective
+      - "オピニオン"
+      - "意見"
+      - "考察"
+
+co_occurrence:
+  # LLM 主要モデル名が出る記事は llm + tool を補完
+  - if_any: [gpt, claude, gemini, llama, mistral, qwen, deepseek]
+    add: [llm]
+
+  # AI Code Editor は agent + tool
+  - if_any: ["claude code", cursor, copilot, windsurf, replit]
+    add: [agent, tool]
+
+  # arxiv URL は paper
+  - if_any: ["arxiv.org", "arxiv:"]
+    add: [paper]
+
+  # ベンチマーク名は benchmark
+  - if_any: [lmarena, mmlu, mteb, helm, bigcodebench, alpacaeval, swe-bench]
+    add: [benchmark]
+
+  # RLHF/DPO/SFT は fine-tuning
+  - if_any: [rlhf, dpo, sft, lora, qlora]
+    add: [fine-tuning]
+
+  # 規制+AI → regulation + safety
+  - if_all: ["ai", regulation]
+    add: [regulation, safety]
+
+  # 画像/動画ツールはマルチモーダル
+  - if_any: [midjourney, "stable diffusion", flux, sora, runway, dall-e]
+    add: [multimodal]
+
+# ハイプキーワード (Phase 2 で実装、Tier 4-5 記事に ⚠️ マーク)
+# 現時点では taggerには影響しない. 別 yaml に分離する案も検討中.
+hype_keywords:
+  - revolutionary
+  - breakthrough
+  - "game-changer"
+  - "game changer"
+  - "world-changing"
+  - "world changing"
+  - "agi achieved"
+  - "agi is here"
+  - unprecedented
+  - "革命的"
+  - "世界を変える"
+  - "agi 達成"
+  - "史上最強"
+  - "ai 革命"
+
+# アンチタグ (Phase 1 で実装、これらに該当する記事は配信除外)
+anti_tags:
+  - hiring
+  - "we're hiring"
+  - "job opening"
+  - careers
+  - "event registration"
+  - sponsored
+  - advertisement
+  - "採用"
+  - "イベント告知"
+  - "募集"
+  - "求人"
+
+# ソース別固定タグ:
+# 該当 slug のソースから取得した記事には以下のタグが必ず付与される.
+# requires_co_tag バイパス. キーワードベースのタグはこれに上乗せされる.
+source_tags:
+  huggingface-blog: [release]
+  google-research-blog: [paper, release]
+  microsoft-ai-news: [release]
+  arxiv-cs-lg: [paper]
+  tldr-ai: [opinion]
+  bens-bites: [opinion]
+  latent-space: [opinion]
+  windsurf-blog: [release, tool]
+  replit-blog: [release, tool]
+  midjourney-updates: [release, multimodal]
+  stockmark-blog: [release]

@@ -1,0 +1,171 @@
+# ai-radar ソースリスト（Phase 0、11本、RSS直取りのみ）
+#
+# スキーマ:
+#   slug:       一意ID (snake_case 推奨、DB の sources.slug に保存)
+#   name:       表示名
+#   feed_url:   RSS / Atom / JSON Feed URL
+#   site_url:   サイトトップ
+#   language:   ja | en
+#   category:   release | paper | newsletter | tool | jp
+#               (qa-radar 由来の tool|blog|community|paper|note は廃止)
+#   tier:       1 (公式) | 2 (査読) | 3 (キュレーション) | 4 (個人) | 5 (SNS)
+#               Phase 2 でスコアリング式 (source_tier × time_decay × user_interest) に使用
+#   enabled:    クローラーが取り込むか
+#   fetch_policy:
+#     min_interval_seconds:   再取得の最小間隔（DDoS抑止）
+#     max_items_per_fetch:    1回の取得で読む上限
+#   license_note:             利用規約上の集約可否についてのメモ
+#
+# 全URLは 2026-05-13 時点で WebFetch で実物確認済み（200応答 + 直近3ヶ月の更新確認）.
+# スクレイピングが必要なソース (Anthropic, HF Papers, Cursor, Sakana, ELYZA, AI2, Kimi,
+# Luma, BFL) は Phase 0.5 (scraper レイヤー実装後) で追加.
+# OpenAI は 403 ロックアウトのため Phase 1 で Wayback Machine 経由実装を予定.
+
+version: 1
+
+sources:
+
+  # ============================================================
+  # Tier 1 公式リリース (3) — 公式RSS提供
+  # ============================================================
+
+  - slug: huggingface-blog
+    name: Hugging Face Blog
+    feed_url: https://huggingface.co/blog/feed.xml
+    site_url: https://huggingface.co/blog
+    language: en
+    category: release
+    tier: 1
+    enabled: true
+    fetch_policy: { min_interval_seconds: 21600, max_items_per_fetch: 30 }
+    license_note: 公開RSS、出所明示+リンクバックで集約可
+
+  - slug: google-research-blog
+    name: Google Research Blog
+    feed_url: https://research.google/blog/rss/
+    site_url: https://research.google/blog/
+    language: en
+    category: release
+    tier: 1
+    enabled: true
+    fetch_policy: { min_interval_seconds: 21600, max_items_per_fetch: 30 }
+    license_note: 公開RSS、出所明示+リンクバックで集約可
+
+  - slug: microsoft-ai-news
+    name: Microsoft AI News (The Official Microsoft Blog)
+    feed_url: https://news.microsoft.com/source/feed/
+    site_url: https://news.microsoft.com/source/
+    language: en
+    category: release
+    tier: 1
+    enabled: true
+    fetch_policy: { min_interval_seconds: 43200, max_items_per_fetch: 25 }
+    license_note: 公開RSS、Microsoft標準コーポレートフィード、出所明示で集約可
+
+  # ============================================================
+  # Paper (1) — 論文フィード
+  # ============================================================
+
+  - slug: arxiv-cs-lg
+    name: arXiv cs.LG (Machine Learning)
+    feed_url: https://rss.arxiv.org/rss/cs.LG
+    site_url: https://arxiv.org/list/cs.LG/recent
+    language: en
+    category: paper
+    tier: 2
+    enabled: true
+    fetch_policy: { min_interval_seconds: 21600, max_items_per_fetch: 50 }
+    license_note: arxiv公式RSS、メタデータCC0
+
+  # ============================================================
+  # Newsletter (3) — キュレーション系
+  # ============================================================
+
+  - slug: tldr-ai
+    name: TLDR AI
+    feed_url: https://tldr.tech/api/rss/ai
+    site_url: https://tldr.tech/ai
+    language: en
+    category: newsletter
+    tier: 3
+    enabled: true
+    fetch_policy: { min_interval_seconds: 43200, max_items_per_fetch: 10 }
+    license_note: 公開RSS、出所明示+リンクバックで集約可
+
+  - slug: bens-bites
+    name: Ben's Bites
+    feed_url: https://bensbites.com/feed
+    site_url: https://bensbites.com
+    language: en
+    category: newsletter
+    tier: 3
+    enabled: true
+    fetch_policy: { min_interval_seconds: 43200, max_items_per_fetch: 10 }
+    license_note: 公開RSS、出所明示+リンクバックで集約可
+
+  - slug: latent-space
+    name: Latent Space (swyx)
+    feed_url: https://www.latent.space/feed
+    site_url: https://www.latent.space
+    language: en
+    category: newsletter
+    tier: 3
+    enabled: true
+    fetch_policy: { min_interval_seconds: 86400, max_items_per_fetch: 10 }
+    license_note: 公開RSS (Substack)、出所明示+リンクバックで集約可
+
+  # ============================================================
+  # Tool / Code Editor (2) — AI コーディング系
+  # ============================================================
+
+  - slug: windsurf-blog
+    name: Windsurf (旧 Codeium) Blog
+    feed_url: https://windsurf.com/blog/feed
+    site_url: https://windsurf.com/blog
+    language: en
+    category: tool
+    tier: 1
+    enabled: true
+    fetch_policy: { min_interval_seconds: 43200, max_items_per_fetch: 20 }
+    license_note: 公開RSS、出所明示+リンクバックで集約可
+
+  - slug: replit-blog
+    name: Replit Blog
+    feed_url: https://blog.replit.com/feed.xml
+    site_url: https://blog.replit.com
+    language: en
+    category: tool
+    tier: 1
+    enabled: true
+    fetch_policy: { min_interval_seconds: 43200, max_items_per_fetch: 20 }
+    license_note: 公開RSS、出所明示+リンクバックで集約可
+
+  # ============================================================
+  # Video / Image gen (1) — 動画/画像生成 (Ghost RSS)
+  # ============================================================
+
+  - slug: midjourney-updates
+    name: Midjourney Updates
+    feed_url: https://updates.midjourney.com/rss/
+    site_url: https://updates.midjourney.com/
+    language: en
+    category: release
+    tier: 1
+    enabled: true
+    fetch_policy: { min_interval_seconds: 86400, max_items_per_fetch: 15 }
+    license_note: 公開RSS (Ghost CMS)、出所明示+リンクバックで集約可
+
+  # ============================================================
+  # 日本語 (1) — JP B2B AI
+  # ============================================================
+
+  - slug: stockmark-blog
+    name: Stockmark テックブログ
+    feed_url: https://stockmark.co.jp/feed
+    site_url: https://stockmark.co.jp/blog
+    language: ja
+    category: jp
+    tier: 1
+    enabled: true
+    fetch_policy: { min_interval_seconds: 86400, max_items_per_fetch: 15 }
+    license_note: 公開RSS、出所明示+リンクバックで集約可
