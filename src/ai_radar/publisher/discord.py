@@ -7,12 +7,18 @@
 レート制限:
 - Discord webhook はバースト時 1秒/req 程度で安全
 - 429 Too Many Requests を受けたら Retry-After に従って再送
+
+Phase 1 拡張:
+- ``resolve_webhook``: category 別の Discord channel webhook URL を解決する.
+  優先順位は ``AI_RADAR_DISCORD_WEBHOOK_<CATEGORY>`` > ``DISCORD_WEBHOOK_URL``.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 import httpx
@@ -27,6 +33,39 @@ DISCORD_TITLE_LIMIT = 256
 DISCORD_DESCRIPTION_LIMIT = 2048
 DISCORD_FOOTER_LIMIT = 2048
 EMBED_COLOR = 0x0969DA  # GitHub blue
+
+# Phase 1: category 別 webhook の環境変数
+CATEGORY_ENV_PREFIX = "AI_RADAR_DISCORD_WEBHOOK_"
+FALLBACK_ENV = "DISCORD_WEBHOOK_URL"
+
+
+def resolve_webhook(
+    category: str | None,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """category に応じた Discord webhook URL を解決する (Phase 1).
+
+    優先順位:
+        1. ``AI_RADAR_DISCORD_WEBHOOK_<CATEGORY>`` (大文字化、例: ``..._RELEASE``)
+        2. ``DISCORD_WEBHOOK_URL`` (全カテゴリ fallback, 後方互換)
+
+    どちらも未設定なら ``None``.
+
+    Args:
+        category: 解決したいカテゴリ. None なら category 別 webhook を試さない.
+        env: 環境変数 mapping. None なら ``os.environ``.
+
+    Returns:
+        webhook URL or None.
+    """
+    e = env if env is not None else os.environ
+    if category:
+        key = f"{CATEGORY_ENV_PREFIX}{category.upper()}"
+        per = e.get(key, "").strip()
+        if per:
+            return per
+    fallback = e.get(FALLBACK_ENV, "").strip()
+    return fallback or None
 
 
 def build_embed(item: FeedItem) -> dict[str, object]:

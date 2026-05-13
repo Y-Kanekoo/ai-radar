@@ -235,3 +235,66 @@ async def test_send_batch_empty_list() -> None:
         )
     assert success == 0
     assert failure == 0
+
+
+# ---------------- Phase 1: resolve_webhook ----------------
+
+
+class TestResolveWebhook:
+    def test_category_specific_takes_precedence(self) -> None:
+        """AI_RADAR_DISCORD_WEBHOOK_<CATEGORY> が DISCORD_WEBHOOK_URL より優先."""
+        from ai_radar.publisher.discord import resolve_webhook
+
+        env = {
+            "AI_RADAR_DISCORD_WEBHOOK_RELEASE": "https://discord/release",
+            "DISCORD_WEBHOOK_URL": "https://discord/fallback",
+        }
+        assert resolve_webhook("release", env=env) == "https://discord/release"
+
+    def test_fallback_when_category_missing(self) -> None:
+        """category 別 webhook が無ければ DISCORD_WEBHOOK_URL を返す."""
+        from ai_radar.publisher.discord import resolve_webhook
+
+        env = {"DISCORD_WEBHOOK_URL": "https://discord/fallback"}
+        assert resolve_webhook("paper", env=env) == "https://discord/fallback"
+
+    def test_none_returned_when_both_missing(self) -> None:
+        """カテゴリ別も fallback も無ければ None."""
+        from ai_radar.publisher.discord import resolve_webhook
+
+        assert resolve_webhook("release", env={}) is None
+
+    def test_empty_string_treated_as_missing(self) -> None:
+        """空文字 / 空白のみは未設定扱い."""
+        from ai_radar.publisher.discord import resolve_webhook
+
+        env = {
+            "AI_RADAR_DISCORD_WEBHOOK_RELEASE": "   ",
+            "DISCORD_WEBHOOK_URL": "https://discord/fallback",
+        }
+        assert resolve_webhook("release", env=env) == "https://discord/fallback"
+
+    def test_category_uppercased(self) -> None:
+        """category は env 引きの際に大文字化される (release → RELEASE)."""
+        from ai_radar.publisher.discord import resolve_webhook
+
+        env = {"AI_RADAR_DISCORD_WEBHOOK_NEWSLETTER": "https://discord/nl"}
+        assert resolve_webhook("newsletter", env=env) == "https://discord/nl"
+        assert resolve_webhook("Newsletter", env=env) == "https://discord/nl"
+
+    def test_none_category_uses_fallback_only(self) -> None:
+        """category=None なら category 別を試さず fallback のみ."""
+        from ai_radar.publisher.discord import resolve_webhook
+
+        env = {
+            "AI_RADAR_DISCORD_WEBHOOK_RELEASE": "https://discord/release",
+            "DISCORD_WEBHOOK_URL": "https://discord/fallback",
+        }
+        assert resolve_webhook(None, env=env) == "https://discord/fallback"
+
+    def test_unknown_category_falls_back(self) -> None:
+        """sources.yaml に無い category 名でも fallback を引ける."""
+        from ai_radar.publisher.discord import resolve_webhook
+
+        env = {"DISCORD_WEBHOOK_URL": "https://discord/fallback"}
+        assert resolve_webhook("benchmark", env=env) == "https://discord/fallback"

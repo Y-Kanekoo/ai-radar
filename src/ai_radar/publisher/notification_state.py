@@ -12,15 +12,27 @@ from ai_radar.publisher.rss import FeedItem
 
 logger = logging.getLogger("ai_radar.notification_state")
 
-DISCORD_CHANNEL = "discord"
+DISCORD_CHANNEL = "discord"  # 旧API互換のデフォルト channel 名 (全カテゴリ統合)
+
+
+def discord_channel_for_category(category: str | None) -> str:
+    """category 別の Discord channel 名を返す (Phase 1).
+
+    None / 空文字なら旧API互換の "discord" を返す.
+    例: "release" → "discord_release"
+    """
+    if not category:
+        return DISCORD_CHANNEL
+    return f"{DISCORD_CHANNEL}_{category}"
 
 
 @dataclass(frozen=True)
 class UnnotifiedArticle:
-    """通知対象記事. article_id を持つ FeedItem ペア."""
+    """通知対象記事. article_id を持つ FeedItem ペア + ソース category."""
 
     article_id: int
     item: FeedItem
+    category: str = ""  # Phase 1 で追加. 既存呼び出し互換のため default 空文字.
 
 
 def fetch_unnotified(
@@ -29,6 +41,7 @@ def fetch_unnotified(
     channel: str = DISCORD_CHANNEL,
     limit: int = 100,
     since_unix: int | None = None,
+    category: str | None = None,
 ) -> list[UnnotifiedArticle]:
     """指定 channel に未通知の記事を取得する.
 
@@ -39,6 +52,7 @@ def fetch_unnotified(
         channel: 通知チャネル名 (既定 'discord').
         limit: 最大取得件数.
         since_unix: 指定するとこの時刻以降に fetch された記事のみ返す.
+        category: 指定するとソース category がこの値に一致する記事のみ返す (Phase 1).
 
     Returns:
         UnnotifiedArticle のリスト. published_at DESC 順.
@@ -46,12 +60,15 @@ def fetch_unnotified(
     where_extra = ""
     params: list[object] = [channel]
     if since_unix is not None:
-        where_extra = "AND a.fetched_at >= ?"
+        where_extra += "AND a.fetched_at >= ? "
         params.append(since_unix)
+    if category is not None:
+        where_extra += "AND s.category = ? "
+        params.append(category)
 
     sql = f"""
         SELECT a.id, a.url, a.title, a.snippet, a.author, a.published_at, a.tags_json,
-               s.name AS source_name
+               s.name AS source_name, s.category AS source_category
         FROM articles a
         JOIN sources s ON a.source_id = s.id
         WHERE NOT EXISTS (
@@ -78,7 +95,13 @@ def fetch_unnotified(
             published_at=int(r["published_at"]),
             tags=tags,
         )
-        result.append(UnnotifiedArticle(article_id=int(r["id"]), item=item))
+        result.append(
+            UnnotifiedArticle(
+                article_id=int(r["id"]),
+                item=item,
+                category=r["source_category"] or "",
+            )
+        )
     return result
 
 

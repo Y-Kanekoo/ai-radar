@@ -5,12 +5,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 
-**ai-radar** collects articles, papers, and product releases from 11+ verified AI/LLM
+**ai-radar** collects articles, papers, and product releases from 20+ verified AI/LLM
 sources (English + Japanese) and serves them through three channels:
 
 1. **Public RSS feed** — hosted on GitHub Pages
 2. **Local MCP server** — query the corpus from Claude Desktop / Claude Code
-3. **Discord webhook** — push notifications for new articles
+3. **Discord webhook (7-channel)** — push notifications per category
 
 A sibling project of [qa-radar](https://github.com/Y-Kanekoo/qa-radar), built from
 the same `crawler / publisher / tagger / summarizer` core but configured for AI/LLM
@@ -20,32 +20,34 @@ For the Japanese readme, see [README.ja.md](README.ja.md).
 
 ## Status
 
-🚧 Under active development (Phase 0 in progress, 2026-05-13 launch).
+🚧 Under active development (Phase 1 in progress, 2026-05-13 launch).
 
 | Phase | Scope | Status |
 |-------|-------|--------|
-| 0. Foundation | Clone + 11 RSS sources + 12 AI tags + tests green + 1ch Discord | 🚧 |
-| 1. Tag refinement + LLM fallback | Threading, reaction collection start | ⏳ |
-| 2. Dedup 5-layer + trust-tier + hype-filter | URL/Levenshtein/body_hash/citation/temporal | ⏳ |
+| 0. Foundation | Clone + 11 RSS sources + 12 AI tags + tests green + 1ch Discord | ✅ |
+| 0.5. Scrapers | +9 sources (HTML scraper layer for Anthropic / HF Papers / Cursor etc.) | ✅ |
+| 1. Dedup 5-layer + 7-channel Discord | URL/Levenshtein/body_hash/thread/cluster + category webhooks | ✅ |
+| 2. Trust-tier + hype-filter + LLM fallback | Source tier scoring, hype detection, MCP-based tagging | ⏳ |
 | 3. Benchmarks + GitHub Trending | LMArena / HF Leaderboard / MTEB / huchenme | ⏳ |
-| 4. Personalization | Bayesian recommendation, A/B test | ⏳ |
+| 4. Personalization | Bayesian recommendation, A/B test, reaction learning | ⏳ |
 | 5. JP sources + Podcast | Zenn / Qiita / Hatena / Cognitive Revolution etc. | ⏳ |
 | 6. Core extraction | Reconsider qa-radar-core abstraction | ⏳ |
 
-## Sources (Phase 0, RSS-first)
+## Sources (20 total, Phase 0 + 0.5)
 
-11 verified sources across 4 categories — all RSS feeds (no scraping required in
-Phase 0). Scraping-only sources (Anthropic, HF Papers, Cursor, Sakana etc.) will
-be added in Phase 0.5 once the scraper layer is implemented.
+20 verified sources: 12 RSS direct + 8 HTML scraper. Each source declares
+`fetch_kind: rss | scraper` in `config/sources.yaml`.
 
 | Category | Sources |
 |---|---|
-| **Release (Tier 1)** | Hugging Face Blog, Google Research Blog, Microsoft AI News |
-| **Paper** | arXiv cs.LG |
+| **Release (Tier 1, RSS)** | Hugging Face Blog, Google Research Blog, Microsoft AI News |
+| **Release (Tier 1, scraper)** | Anthropic News, Cursor Blog, Luma News, BFL Blog, Sakana AI, Kimi Blog (Moonshot) |
+| **Paper (RSS)** | arXiv cs.LG |
+| **Paper (scraper)** | Hugging Face Papers (Daily), Allen AI Blog |
 | **Newsletter** | TLDR AI, Ben's Bites, Latent Space |
-| **Tool / Code Editor** | Windsurf, Replit |
-| **Video / Image gen** | Midjourney (updates.midjourney.com) |
-| **JP** | Stockmark |
+| **Tool / Code Editor** | Windsurf, Replit, Cursor |
+| **Video / Image gen** | Midjourney (RSS), Luma AI, Black Forest Labs |
+| **JP** | Stockmark (RSS), ELYZA News (scraper) |
 
 See [config/sources.yaml](config/sources.yaml) for the full list with feed URLs
 and license notes.
@@ -57,6 +59,46 @@ and license notes.
 
 Configured in [config/tag_rules.yaml](config/tag_rules.yaml) with co-occurrence
 rules, hype-keyword filter (Phase 2), and source-fixed tags.
+
+## Dedup 5-layer (Phase 1)
+
+Each crawled article is checked against the existing corpus in 5 layers before
+insertion. Layers 1–3 reject duplicates; layers 4–5 assign clustering IDs.
+
+| Layer | Check | Threshold | Implementation |
+|---|---|---|---|
+| ① URL normalized | Same `normalized_url` (utm/fbclid stripped, arXiv version stripped, trailing slash unified) | exact match | `is_known_by_normalized_url` |
+| ② Title similarity | `SequenceMatcher.ratio()` over 24 h window | ≥ 0.85 | `find_similar_title` |
+| ③ Body hash cross-source | Same `body_hash` in another source | exact match | `find_cross_source_duplicate` |
+| ④ Citation thread | Same `thread_id` via title similarity over 24 h window | ≥ 0.90 | `find_thread_id` |
+| ⑤ Temporal cluster | Same `cluster_id` via title similarity over 24 h window | ≥ 0.80 | `find_cluster_id` |
+
+Threshold defaults are tunable per call. DB stores `normalized_url`, `thread_id`,
+`cluster_id` columns added in schema v3 (auto-migrated from v2).
+
+## Discord 7-channel webhook (Phase 1)
+
+`scripts/notify_discord.py` dispatches articles per `source.category`. Configure
+one webhook URL per channel via env var, or use a single `DISCORD_WEBHOOK_URL`
+as fallback for all categories.
+
+| Env var | Channel example | Categories |
+|---|---|---|
+| `AI_RADAR_DISCORD_WEBHOOK_RELEASE` | `#ai-radar-release` | Anthropic, OpenAI, HF Blog, Google Research, MS AI, Sakana, BFL, Luma, Kimi, Midjourney |
+| `AI_RADAR_DISCORD_WEBHOOK_PAPER` | `#ai-radar-paper` | arXiv cs.LG, HF Papers, AI2 |
+| `AI_RADAR_DISCORD_WEBHOOK_NEWSLETTER` | `#ai-radar-newsletter` | TLDR AI, Ben's Bites, Latent Space |
+| `AI_RADAR_DISCORD_WEBHOOK_TOOL` | `#ai-radar-tool` | Windsurf, Replit, Cursor |
+| `AI_RADAR_DISCORD_WEBHOOK_JP` | `#ai-radar-jp` | Stockmark, ELYZA |
+| `AI_RADAR_DISCORD_WEBHOOK_BENCHMARK` | `#ai-radar-benchmark` | reserved for Phase 3 |
+| `AI_RADAR_DISCORD_WEBHOOK_TREND` | `#ai-radar-trend` | reserved for Phase 3 |
+| `AI_RADAR_DISCORD_WEBHOOK_PODCAST` | `#ai-radar-podcast` | reserved for Phase 5 |
+| `DISCORD_WEBHOOK_URL` | (legacy / fallback) | any category without a specific webhook |
+
+Resolution order: per-category env > `DISCORD_WEBHOOK_URL` fallback > skip.
+Each category has an independent notification record (`channel=discord_<category>`),
+so the same article is delivered only once per category.
+
+Configure these as **GitHub Actions secrets** for the `crawl.yml` workflow.
 
 ## MCP server usage
 

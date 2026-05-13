@@ -14,33 +14,79 @@ from html.parser import HTMLParser
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 # 削除する追跡パラメータ. 大文字小文字区別なし.
+# Phase 1 で 10 → 19 個に拡張. `src`/`source` は一部サイトで意味のある値を持つので含めない.
 TRACKING_PARAMS = frozenset(
     {
+        # UTM (Google Analytics 系)
         "utm_source",
         "utm_medium",
         "utm_campaign",
         "utm_term",
         "utm_content",
-        "fbclid",
-        "gclid",
-        "yclid",
+        # 各広告プラットフォーム
+        "fbclid",  # Facebook
+        "gclid",  # Google Ads
+        "yclid",  # Yandex
         "ref",
         "ref_src",
+        "twclid",  # X / Twitter
+        "msclkid",  # Microsoft Ads
+        "dclid",  # DoubleClick
+        # Mailchimp
+        "mc_cid",
+        "mc_eid",
+        # HubSpot
+        "_hsenc",
+        "_hsmi",
+        "hsctatracking",  # lower-cased for comparison
+        # Instagram
+        "igshid",
+        # Alibaba
+        "spm",
     }
 )
 
+# arXiv URL から version suffix を除去するパターン.
+# 例: /abs/2301.12345v2 -> /abs/2301.12345
+_ARXIV_VERSION = re.compile(r"^(/abs/\d+\.\d+)v\d+/?$")
+
 
 def normalize_url(url: str) -> str:
-    """URL から追跡パラメータと fragment を除去し、scheme/host を小文字化."""
+    """URL を正規化する (dedup 5層の層1).
+
+    変換内容:
+    1. scheme/host を小文字化
+    2. 追跡パラメータ (TRACKING_PARAMS) と fragment を除去
+    3. arXiv の version suffix (`v1`/`v2` 等) を除去
+    4. ルート以外の末尾スラッシュを除去 (`/blog/` → `/blog`)
+
+    空文字や scheme 無しの URL は無加工で返す (旧挙動互換).
+    """
     parsed = urlparse(url)
     if not parsed.scheme:
         return url
+
+    # 追跡パラメータ除去 (キーを lower-case で比較)
     qs = [(k, v) for k, v in parse_qsl(parsed.query) if k.lower() not in TRACKING_PARAMS]
+
+    path = parsed.path
+    netloc = parsed.netloc.lower()
+
+    # arXiv version suffix 除去 (export.arxiv.org / arxiv.org の両方を含む)
+    if netloc.endswith("arxiv.org"):
+        match = _ARXIV_VERSION.match(path)
+        if match:
+            path = match.group(1)
+
+    # 末尾スラッシュ統一: パスが "/" 単体でなければ末尾スラッシュを除去
+    if len(path) > 1 and path.endswith("/"):
+        path = path.rstrip("/")
+
     return urlunparse(
         (
             parsed.scheme.lower(),
-            parsed.netloc.lower(),
-            parsed.path,
+            netloc,
+            path,
             parsed.params,
             urlencode(qs),
             "",  # fragment は削除

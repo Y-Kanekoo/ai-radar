@@ -24,6 +24,11 @@ class ArticleRow:
     author: str | None
     published_at: int
     tags: list[str] | None = None  # None なら空タグで挿入 (Phase 2 から指定)
+    # Phase 1 (ai-radar 0.2): dedup 5層化のカラム.
+    # 既存呼び出しは省略可能 (None で挿入される).
+    normalized_url: str | None = None
+    thread_id: int | None = None
+    cluster_id: int | None = None
 
 
 def upsert_source(conn: sqlite3.Connection, source: SourceConfig) -> int:
@@ -71,8 +76,9 @@ def insert_article(conn: sqlite3.Connection, article: ArticleRow) -> bool:
             """
             INSERT INTO articles
                 (source_id, guid, url, title, snippet, body_hash, body, author,
-                 published_at, fetched_at, tags_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 published_at, fetched_at, tags_json,
+                 normalized_url, thread_id, cluster_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 article.source_id,
@@ -86,6 +92,9 @@ def insert_article(conn: sqlite3.Connection, article: ArticleRow) -> bool:
                 article.published_at,
                 int(time.time()),
                 tags_json,
+                article.normalized_url,
+                article.thread_id,
+                article.cluster_id,
             ),
         )
         conn.commit()

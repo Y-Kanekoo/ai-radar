@@ -45,6 +45,56 @@ class TestNormalizeUrl:
         )
         assert normalize_url(url) == "https://example.com/?keep=ok"
 
+    # ---------------- Phase 1 拡張 ----------------
+
+    def test_strips_phase1_tracking_params(self) -> None:
+        """Phase 1 で追加した追跡パラメータ (mc_*, msclkid, twclid, igshid, _hsenc, spm)."""
+        url = (
+            "https://example.com/?mc_cid=a&mc_eid=b&msclkid=c&twclid=d"
+            "&igshid=e&_hsenc=f&_hsmi=g&spm=h&dclid=i&keep=ok"
+        )
+        assert normalize_url(url) == "https://example.com/?keep=ok"
+
+    def test_strips_arxiv_version_suffix(self) -> None:
+        """arXiv URL の version suffix (v1, v2 等) を除去."""
+        assert (
+            normalize_url("https://arxiv.org/abs/2301.12345v2")
+            == "https://arxiv.org/abs/2301.12345"
+        )
+        assert (
+            normalize_url("https://arxiv.org/abs/2605.10730v3")
+            == "https://arxiv.org/abs/2605.10730"
+        )
+
+    def test_keeps_arxiv_without_version(self) -> None:
+        """arXiv URL に version が無ければそのまま."""
+        assert (
+            normalize_url("https://arxiv.org/abs/2301.12345") == "https://arxiv.org/abs/2301.12345"
+        )
+
+    def test_arxiv_version_strip_only_for_arxiv_domain(self) -> None:
+        """他ドメインでは v\\d+ パターンを保持 (非 arxiv の偶発マッチを防ぐ)."""
+        assert (
+            normalize_url("https://example.com/abs/2301.12345v2")
+            == "https://example.com/abs/2301.12345v2"
+        )
+
+    def test_strips_trailing_slash(self) -> None:
+        """末尾スラッシュを除去 (root は維持)."""
+        assert normalize_url("https://example.com/blog/") == "https://example.com/blog"
+        assert normalize_url("https://example.com/blog/post/") == "https://example.com/blog/post"
+
+    def test_keeps_root_slash(self) -> None:
+        """root path (/) は維持する."""
+        assert normalize_url("https://example.com/") == "https://example.com/"
+
+    def test_arxiv_version_with_trailing_slash(self) -> None:
+        """arXiv version + 末尾スラッシュ両方を除去."""
+        assert (
+            normalize_url("https://arxiv.org/abs/2301.12345v2/")
+            == "https://arxiv.org/abs/2301.12345"
+        )
+
 
 class TestStripHtml:
     def test_basic_tags(self) -> None:

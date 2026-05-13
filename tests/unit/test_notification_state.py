@@ -8,6 +8,7 @@ from ai_radar.crawler.store import ArticleRow, insert_article, upsert_source
 from ai_radar.db import init_db
 from ai_radar.publisher.notification_state import (
     DISCORD_CHANNEL,
+    discord_channel_for_category,
     fetch_unnotified,
     mark_notified,
     mark_notified_bulk,
@@ -186,19 +187,135 @@ def test_mark_notified_bulk_empty(tmp_path: Path) -> None:
         conn.close()
 
 
-# ---------------- DBスキーマ v2 マイグレーション ----------------
+# ---------------- DBスキーマ v3 マイグレーション ----------------
 
 
-def test_v1_to_v2_migration_adds_table(tmp_path: Path) -> None:
-    """v1 DB を v2 のコードで開いた時、article_notifications テーブルが追加される."""
+# ---------------- Phase 1: discord_channel_for_category ----------------
+
+
+def test_discord_channel_for_category_default() -> None:
+    """category 未指定なら旧API互換の 'discord' を返す."""
+    assert discord_channel_for_category(None) == "discord"
+    assert discord_channel_for_category("") == "discord"
+
+
+def test_discord_channel_for_category_appends_suffix() -> None:
+    """category 指定で 'discord_<category>' を返す."""
+    assert discord_channel_for_category("release") == "discord_release"
+    assert discord_channel_for_category("paper") == "discord_paper"
+    assert discord_channel_for_category("jp") == "discord_jp"
+
+
+# ---------------- Phase 1: fetch_unnotified の category フィルタ ----------------
+
+
+def _src_with_category(slug: str, category: str) -> SourceConfig:
+    return SourceConfig(
+        slug=slug,
+        name=f"Source {slug}",
+        feed_url=f"https://{slug}.example.com/feed",
+        site_url=None,
+        language="en",
+        category=category,
+        enabled=True,
+        fetch_policy=FetchPolicy(min_interval_seconds=0, max_items_per_fetch=10),
+        license_note="",
+    )
+
+
+def test_fetch_unnotified_category_filter(tmp_path: Path) -> None:
+    """category 引数で source.category が一致する記事のみ返る."""
+    conn = init_db(tmp_path / "test.db")
+    try:
+        sid_release = upsert_source(conn, _src_with_category("a", "release"))
+        sid_paper = upsert_source(conn, _src_with_category("b", "paper"))
+        insert_article(
+            conn,
+            ArticleRow(
+                source_id=sid_release,
+                guid="g1",
+                url="https://a/1",
+                title="release article",
+                snippet="x",
+                body_hash="h1",
+                body="b",
+                author=None,
+                published_at=1700000000,
+            ),
+        )
+        insert_article(
+            conn,
+            ArticleRow(
+                source_id=sid_paper,
+                guid="g2",
+                url="https://b/1",
+                title="paper article",
+                snippet="x",
+                body_hash="h2",
+                body="b",
+                author=None,
+                published_at=1700000000,
+            ),
+        )
+        # release のみ
+        release_only = fetch_unnotified(conn, category="release")
+        assert len(release_only) == 1
+        assert release_only[0].item.title == "release article"
+        assert release_only[0].category == "release"
+        # paper のみ
+        paper_only = fetch_unnotified(conn, category="paper")
+        assert len(paper_only) == 1
+        assert paper_only[0].category == "paper"
+        # category 指定なし → 両方
+        all_articles = fetch_unnotified(conn)
+        assert len(all_articles) == 2
+    finally:
+        conn.close()
+
+
+def test_unnotified_article_carries_category(tmp_path: Path) -> None:
+    """UnnotifiedArticle に source.category がセットされる."""
+    conn = init_db(tmp_path / "test.db")
+    try:
+        sid = upsert_source(conn, _src_with_category("jp1", "jp"))
+        insert_article(
+            conn,
+            ArticleRow(
+                source_id=sid,
+                guid="g1",
+                url="https://x",
+                title="t",
+                snippet="x",
+                body_hash="h",
+                body="b",
+                author=None,
+                published_at=1700000000,
+            ),
+        )
+        result = fetch_unnotified(conn)
+        assert len(result) == 1
+        assert result[0].category == "jp"
+    finally:
+        conn.close()
+
+
+def test_v1_to_v3_migration_adds_table_and_columns(tmp_path: Path) -> None:
+    """v1 DB を v3 のコードで開いた時、article_notifications テーブルと
+    dedup 5層用カラム (normalized_url / thread_id / cluster_id) が追加される.
+    """
     db_path = tmp_path / "test.db"
     conn = init_db(db_path)
-    # v2 で初期化されているのでこれだけで通る
+    # v3 で初期化されているのでこれだけで通る
     rows = conn.execute(
         "SELECT name FROM sqlite_master WHERE name='article_notifications'"
     ).fetchall()
     assert len(rows) == 1
-    # version も2に更新されている
+    # v3 カラムが articles に存在する
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(articles)")}
+    assert "normalized_url" in cols
+    assert "thread_id" in cols
+    assert "cluster_id" in cols
+    # version も3に更新されている
     row = conn.execute("SELECT version FROM schema_version").fetchone()
-    assert row["version"] == 2
+    assert row["version"] == 3
     conn.close()

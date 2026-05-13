@@ -11,7 +11,16 @@ from urllib.parse import urlparse
 
 import httpx
 
-from ai_radar.crawler.dedup import is_known
+from ai_radar.crawler.dedup import (
+    find_cluster_id,
+    find_cross_source_duplicate,
+    find_similar_title,
+    find_thread_id,
+    is_known,
+    is_known_by_normalized_url,
+    next_cluster_id,
+    next_thread_id,
+)
 from ai_radar.crawler.fetch import DEFAULT_TIMEOUT, RobotsCache, fetch_feed
 from ai_radar.crawler.normalize import (
     compute_body_hash,
@@ -167,19 +176,47 @@ async def _process_source(
             continue
         if is_known(conn, source_id, item.guid):
             continue
+
         body_plain = strip_html(item.body)
         title_clean = item.title.strip()
+        normalized = normalize_url(item.url)
+        body_hash = compute_body_hash(item.body)
+        published_at = normalize_published(item.published_struct)
+
+        # ----- Phase 1 dedup 5層: 層1〜3 は重複判定 (skip), 層4〜5 はクラスタ ID 割り当て
+        # 層1: URL 正規化マッチ
+        if is_known_by_normalized_url(conn, normalized):
+            continue
+        # 層2: タイトル類似度 (>= 0.85) で 24h 窓内に類似記事があれば重複
+        if find_similar_title(conn, title_clean, published_at) is not None:
+            continue
+        # 層3: 別ソースに同 body_hash がある場合は転載重複
+        if find_cross_source_duplicate(conn, body_hash, source_id) is not None:
+            continue
+
+        # 層4: 引用元クラスタリング (title 類似 >= 0.9 で同 thread_id)
+        thread_id = find_thread_id(conn, title_clean, published_at)
+        if thread_id is None:
+            thread_id = next_thread_id(conn)
+        # 層5: 時系列クラスタリング (title 類似 >= 0.8 で同 cluster_id)
+        cluster_id = find_cluster_id(conn, title_clean, published_at)
+        if cluster_id is None:
+            cluster_id = next_cluster_id(conn)
+
         article = ArticleRow(
             source_id=source_id,
             guid=item.guid,
-            url=normalize_url(item.url),
+            url=normalized,
             title=title_clean,
             snippet=make_snippet(item.body, max_chars=100),
-            body_hash=compute_body_hash(item.body),
+            body_hash=body_hash,
             body=body_plain,
             author=item.author,
-            published_at=normalize_published(item.published_struct),
+            published_at=published_at,
             tags=assign_tags(title_clean, body_plain, tagger, source_slug=source.slug),
+            normalized_url=normalized,
+            thread_id=thread_id,
+            cluster_id=cluster_id,
         )
         if insert_article(conn, article):
             added += 1
