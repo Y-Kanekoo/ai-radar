@@ -298,3 +298,81 @@ class TestResolveWebhook:
 
         env = {"DISCORD_WEBHOOK_URL": "https://discord/fallback"}
         assert resolve_webhook("benchmark", env=env) == "https://discord/fallback"
+
+
+# ---------------- Phase 2: ⚠️ ハイプマーク ----------------
+
+
+class TestBuildEmbedHype:
+    def test_no_hype_no_warning_prefix(self) -> None:
+        from ai_radar.publisher.discord import build_embed
+
+        item = _item(title="Normal article")
+        embed = build_embed(item, is_hype=False)
+        assert not str(embed["title"]).startswith("⚠️")
+
+    def test_hype_adds_warning_prefix(self) -> None:
+        from ai_radar.publisher.discord import build_embed
+
+        item = _item(title="Revolutionary AI!")
+        embed = build_embed(item, is_hype=True)
+        assert str(embed["title"]).startswith("⚠️ ")
+
+    def test_hype_title_still_within_limit(self) -> None:
+        """⚠️ 付きでも DISCORD_TITLE_LIMIT (256) に収まる."""
+        from ai_radar.publisher.discord import build_embed
+
+        item = _item(title="a" * 300)
+        embed = build_embed(item, is_hype=True)
+        assert len(str(embed["title"])) <= DISCORD_TITLE_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_send_batch_with_hype_flags() -> None:
+    """send_batch に hype_flags を渡すと各 item の is_hype が embed に反映される."""
+    from ai_radar.publisher.discord import send_batch
+
+    captured = []
+
+    def _capture(req: httpx.Request) -> httpx.Response:
+        import json as _json
+
+        captured.append(_json.loads(req.content))
+        return httpx.Response(204)
+
+    transport = httpx.MockTransport(_capture)
+    items = [
+        _item(id=f"https://e.com/{i}", url=f"https://e.com/{i}", title=f"t{i}") for i in range(3)
+    ]
+    async with httpx.AsyncClient(transport=transport) as client:
+        success, failure = await send_batch(
+            items,
+            "https://discord/wh",
+            rate_limit_delay=0,
+            client=client,
+            hype_flags=[True, False, True],
+        )
+    assert success == 3
+    assert failure == 0
+    # 1番目と3番目に ⚠️、2番目には無し
+    assert captured[0]["embeds"][0]["title"].startswith("⚠️")
+    assert not captured[1]["embeds"][0]["title"].startswith("⚠️")
+    assert captured[2]["embeds"][0]["title"].startswith("⚠️")
+
+
+@pytest.mark.asyncio
+async def test_send_batch_hype_flags_length_mismatch_raises() -> None:
+    """hype_flags の長さが items と違うと ValueError."""
+    from ai_radar.publisher.discord import send_batch
+
+    transport = httpx.MockTransport(lambda _req: httpx.Response(204))
+    items = [_item()]
+    async with httpx.AsyncClient(transport=transport) as client:
+        with pytest.raises(ValueError, match="hype_flags"):
+            await send_batch(
+                items,
+                "https://discord/wh",
+                rate_limit_delay=0,
+                client=client,
+                hype_flags=[True, False],  # items=1 だが flags=2
+            )

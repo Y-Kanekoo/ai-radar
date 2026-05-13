@@ -68,10 +68,14 @@ def resolve_webhook(
     return fallback or None
 
 
-def build_embed(item: FeedItem) -> dict[str, object]:
+HYPE_TITLE_PREFIX = "⚠️ "  # Phase 2: Tier 4-5 + hype 検出時に title 先頭に付与
+
+
+def build_embed(item: FeedItem, *, is_hype: bool = False) -> dict[str, object]:
     """FeedItem から Discord embed dict を生成する.
 
-    Discord の各フィールド長制限を遵守する.
+    Discord の各フィールド長制限を遵守する. ``is_hype=True`` のとき title 先頭に
+    ``⚠️`` を付ける (Phase 2).
     """
     tag_text = " ".join(f"#{t}" for t in item.tags) if item.tags else ""
     description = item.snippet
@@ -80,7 +84,8 @@ def build_embed(item: FeedItem) -> dict[str, object]:
     if len(description) > DISCORD_DESCRIPTION_LIMIT:
         description = description[: DISCORD_DESCRIPTION_LIMIT - 1] + "…"
 
-    title = item.title[:DISCORD_TITLE_LIMIT]
+    raw_title = (HYPE_TITLE_PREFIX + item.title) if is_hype else item.title
+    title = raw_title[:DISCORD_TITLE_LIMIT]
     footer_text = item.source_name[:DISCORD_FOOTER_LIMIT]
     if item.author:
         footer_text = f"{footer_text} / {item.author}"[:DISCORD_FOOTER_LIMIT]
@@ -95,15 +100,16 @@ def build_embed(item: FeedItem) -> dict[str, object]:
     }
 
 
-def build_payload(item: FeedItem) -> dict[str, object]:
+def build_payload(item: FeedItem, *, is_hype: bool = False) -> dict[str, object]:
     """webhook に送信する完全なペイロードを生成する."""
-    return {"embeds": [build_embed(item)]}
+    return {"embeds": [build_embed(item, is_hype=is_hype)]}
 
 
 async def send_notification(
     item: FeedItem,
     webhook_url: str,
     *,
+    is_hype: bool = False,
     client: httpx.AsyncClient | None = None,
     timeout: float = DEFAULT_TIMEOUT,
     max_retries: int = 1,
@@ -112,10 +118,18 @@ async def send_notification(
 
     429 Rate Limit を受けた場合は Retry-After に従って max_retries 回再送する.
 
+    Args:
+        item: 通知対象 FeedItem.
+        webhook_url: Discord webhook URL.
+        is_hype: Phase 2 のハイプフラグ. title 先頭に ⚠️ を付ける.
+        client: 共有 httpx.AsyncClient.
+        timeout: HTTP タイムアウト.
+        max_retries: 429 再送回数.
+
     Returns:
         成功で True, 永続失敗で False.
     """
-    payload = build_payload(item)
+    payload = build_payload(item, is_hype=is_hype)
 
     own_client = client is None
     used = client if client is not None else httpx.AsyncClient(timeout=timeout)
@@ -170,14 +184,27 @@ async def send_batch(
     *,
     rate_limit_delay: float = DEFAULT_RATE_LIMIT_DELAY,
     client: httpx.AsyncClient | None = None,
+    hype_flags: list[bool] | None = None,
 ) -> tuple[int, int]:
     """記事リストを順次 Discord に通知する.
 
-    各送信間に `rate_limit_delay` 秒の sleep を挟む.
+    各送信間に `rate_limit_delay` 秒の sleep を挟む. ``hype_flags`` を指定すると
+    各 item に対応する is_hype を build_embed に渡す (Phase 2).
+
+    Args:
+        items: 送信対象.
+        webhook_url: Discord webhook.
+        rate_limit_delay: 連続送信間隔.
+        client: 共有 httpx.AsyncClient.
+        hype_flags: items と並列の bool リスト. None なら全 False.
 
     Returns:
         (成功件数, 失敗件数).
     """
+    if hype_flags is not None and len(hype_flags) != len(items):
+        raise ValueError("hype_flags の長さは items と一致する必要があります")
+    flags = hype_flags or [False] * len(items)
+
     success = 0
     failure = 0
     own_client = client is None
@@ -186,7 +213,7 @@ async def send_batch(
         for i, item in enumerate(items):
             if i > 0 and rate_limit_delay > 0:
                 await asyncio.sleep(rate_limit_delay)
-            ok = await send_notification(item, webhook_url, client=used)
+            ok = await send_notification(item, webhook_url, is_hype=flags[i], client=used)
             if ok:
                 success += 1
             else:

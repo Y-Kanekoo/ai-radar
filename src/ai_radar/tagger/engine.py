@@ -7,11 +7,19 @@
 - requires_co_tag=True のタグは他タグが1つ以上ある場合のみ追加 (例: tooling)
 - 共起ルール (if_any/if_all) で別タグを補完
 - 最終的に max_tags (既定3) で打ち切り
+
+Phase 2 追加:
+- ``is_blocked_by_anti_tag``: 採用/イベント告知/sponsored 等を配信から除外
+- ``detect_hype``: ハイプ語ヒット + ソース Tier 4-5 で警告フラグ
 """
 
 from __future__ import annotations
 
 from ai_radar.tagger.rules import TaggerConfig
+
+# Phase 2: Tier 4-5 のソースのみハイプフィルタを適用する.
+# 公式 (Tier 1-3) の "breakthrough" は普通に出るが、SNS/個人ブログの "breakthrough" は警戒.
+HYPE_MIN_TIER = 4
 
 
 def _score_tag(
@@ -120,3 +128,54 @@ def assign_tags(
                 final.append(tag)
 
     return final
+
+
+# ---------------- Phase 2: anti_tags / hype 検出 ----------------
+
+
+def is_blocked_by_anti_tag(title: str, body: str, config: TaggerConfig) -> bool:
+    """記事タイトル/本文が anti_tags のいずれかにヒットすれば True.
+
+    Anti-tag は配信除外対象 (採用、イベント告知、sponsored、求人 等).
+    title または body の小文字化テキストへの部分一致で判定.
+
+    Args:
+        title: 記事タイトル.
+        body: 記事本文 (HTML 除去後).
+        config: TaggerConfig (`anti_tags` を参照).
+
+    Returns:
+        いずれかの anti_tag にヒットしたら True.
+    """
+    if not config.anti_tags:
+        return False
+    combined = (title or "").lower() + " " + (body or "").lower()
+    return any(kw in combined for kw in config.anti_tags)
+
+
+def detect_hype(
+    title: str,
+    body: str,
+    source_tier: int,
+    config: TaggerConfig,
+) -> bool:
+    """記事がハイプ表現を含むかを判定する (Phase 2).
+
+    Tier 4-5 のソースで `hype_keywords` のいずれかが title/body にヒットすれば True.
+    公式や査読系 (Tier 1-3) は普通に "breakthrough" 等を使うため、適用しない.
+
+    Args:
+        title: 記事タイトル.
+        body: 記事本文 (HTML 除去後).
+        source_tier: ソースの信頼度 Tier (1-5).
+        config: TaggerConfig (`hype_keywords` を参照).
+
+    Returns:
+        Tier 4-5 + ハイプ語ヒットなら True.
+    """
+    if source_tier < HYPE_MIN_TIER:
+        return False
+    if not config.hype_keywords:
+        return False
+    combined = (title or "").lower() + " " + (body or "").lower()
+    return any(kw in combined for kw in config.hype_keywords)

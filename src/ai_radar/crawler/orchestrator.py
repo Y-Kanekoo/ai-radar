@@ -41,7 +41,7 @@ from ai_radar.crawler.store import (
     upsert_source,
 )
 from ai_radar.sources import BlockedConfig, SourceConfig
-from ai_radar.tagger.engine import assign_tags
+from ai_radar.tagger.engine import assign_tags, detect_hype, is_blocked_by_anti_tag
 from ai_radar.tagger.rules import TaggerConfig, load_tagger_config
 
 logger = logging.getLogger("ai_radar.crawler")
@@ -183,6 +183,10 @@ async def _process_source(
         body_hash = compute_body_hash(item.body)
         published_at = normalize_published(item.published_struct)
 
+        # ----- Phase 2: アンチタグ (採用/イベント告知/sponsored 等) は配信対象外 → skip
+        if is_blocked_by_anti_tag(title_clean, body_plain, tagger):
+            continue
+
         # ----- Phase 1 dedup 5層: 層1〜3 は重複判定 (skip), 層4〜5 はクラスタ ID 割り当て
         # 層1: URL 正規化マッチ
         if is_known_by_normalized_url(conn, normalized):
@@ -203,6 +207,9 @@ async def _process_source(
         if cluster_id is None:
             cluster_id = next_cluster_id(conn)
 
+        # Phase 2: ハイプフィルタ (Tier 4-5 + hype キーワードヒット)
+        is_hype = detect_hype(title_clean, body_plain, source.tier, tagger)
+
         article = ArticleRow(
             source_id=source_id,
             guid=item.guid,
@@ -217,6 +224,7 @@ async def _process_source(
             normalized_url=normalized,
             thread_id=thread_id,
             cluster_id=cluster_id,
+            is_hype=is_hype,
         )
         if insert_article(conn, article):
             added += 1

@@ -15,11 +15,12 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 # 履歴:
 #   v2 (Phase 4): article_notifications テーブルを追加
 #   v3 (Phase 1, ai-radar 0.2): articles に normalized_url / thread_id / cluster_id を追加
 #                              (dedup 5層化と引用元/時系列クラスタリング)
+#   v4 (Phase 2, ai-radar 0.2): articles に is_hype, sources に tier を追加
 
 _SCHEMA_SQL = """
 PRAGMA journal_mode = WAL;
@@ -42,7 +43,9 @@ CREATE TABLE IF NOT EXISTS sources (
     last_fetched_at INTEGER,
     last_etag TEXT,
     last_modified TEXT,
-    consecutive_errors INTEGER DEFAULT 0
+    consecutive_errors INTEGER DEFAULT 0,
+    -- v4 (Phase 2): 信頼度 Tier 1-5 (1=公式, 5=SNS). yaml の値を upsert 時に書く.
+    tier INTEGER NOT NULL DEFAULT 3
 );
 
 CREATE TABLE IF NOT EXISTS articles (
@@ -62,6 +65,8 @@ CREATE TABLE IF NOT EXISTS articles (
     normalized_url TEXT,
     thread_id INTEGER,
     cluster_id INTEGER,
+    -- v4 (Phase 2): ハイプフィルタ警告フラグ. Tier 4-5 + hype_keywords ヒットで 1.
+    is_hype INTEGER NOT NULL DEFAULT 0,
     UNIQUE(source_id, guid)
 );
 
@@ -157,19 +162,19 @@ def init_db(path: Path) -> sqlite3.Connection:
 
 
 def _premigrate_columns_if_needed(conn: sqlite3.Connection) -> None:
-    """既存 articles に v3 カラムが欠けていれば ALTER TABLE で追加する.
+    """既存 articles / sources に v3-v4 カラムが欠けていれば ALTER TABLE で追加する.
 
     ``_SCHEMA_SQL`` を実行する前に呼ぶ. 新規 DB の場合 articles テーブル自体が
     存在しないのでスキップする (テーブルは ``_SCHEMA_SQL`` の CREATE TABLE で
-    v3 カラムを含む状態で作成される).
+    最新スキーマを含む状態で作成される).
     """
     row = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='articles'"
     ).fetchone()
     if row is None:
         return  # 新規 DB
-    cols = {r["name"] for r in conn.execute("PRAGMA table_info(articles)")}
     altered = False
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(articles)")}
     if "normalized_url" not in cols:
         conn.execute("ALTER TABLE articles ADD COLUMN normalized_url TEXT")
         altered = True
@@ -178,6 +183,15 @@ def _premigrate_columns_if_needed(conn: sqlite3.Connection) -> None:
         altered = True
     if "cluster_id" not in cols:
         conn.execute("ALTER TABLE articles ADD COLUMN cluster_id INTEGER")
+        altered = True
+    # v4 (Phase 2): is_hype カラム
+    if "is_hype" not in cols:
+        conn.execute("ALTER TABLE articles ADD COLUMN is_hype INTEGER NOT NULL DEFAULT 0")
+        altered = True
+    # v4 (Phase 2): sources.tier カラム
+    src_cols = {r["name"] for r in conn.execute("PRAGMA table_info(sources)")}
+    if "tier" not in src_cols:
+        conn.execute("ALTER TABLE sources ADD COLUMN tier INTEGER NOT NULL DEFAULT 3")
         altered = True
     if altered:
         conn.commit()
@@ -204,3 +218,12 @@ def _migrate(conn: sqlite3.Connection, *, from_version: int) -> None:
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_articles_thread_id ON articles(thread_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_articles_cluster_id ON articles(cluster_id)")
+    if from_version < 4:
+        # v3 → v4 (Phase 2): articles.is_hype + sources.tier. _premigrate で既に ALTER 済み
+        # かもしれないので PRAGMA で確認してから.
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(articles)")}
+        if "is_hype" not in cols:
+            conn.execute("ALTER TABLE articles ADD COLUMN is_hype INTEGER NOT NULL DEFAULT 0")
+        src_cols = {row["name"] for row in conn.execute("PRAGMA table_info(sources)")}
+        if "tier" not in src_cols:
+            conn.execute("ALTER TABLE sources ADD COLUMN tier INTEGER NOT NULL DEFAULT 3")

@@ -6,6 +6,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Phase 2 — Trust-tier scoring + Hype filter + LLM fallback (2026-05-13)
+
+#### Added
+
+- **DB スキーマ v4**: `articles.is_hype INTEGER` + `sources.tier INTEGER` を追加.
+  v3→v4 を `_premigrate_columns_if_needed` で自動 ALTER TABLE.
+- **`SourceConfig.tier`**: yaml の `tier:` を読み込み (1-5、未指定なら 3、範囲外は ValueError).
+  全 20 ソースに tier 明示.
+- **`TaggerConfig.anti_tags` / `.hype_keywords`**: tag_rules.yaml から読込.
+- **`tagger.engine.is_blocked_by_anti_tag`**: anti_tags (hiring/careers/sponsored/採用 等) ヒット
+  記事を配信対象外として扱う.
+- **`tagger.engine.detect_hype`**: Tier 4-5 + `hype_keywords` ヒット記事に `is_hype=True`.
+- **`crawler/scoring.py` 新設**: `compute_score(tier, category, age_seconds, is_hype)` +
+  `should_deliver(...)`. プラン §5 のスコアリング式を実装.
+- **配信スコアフィルタ**: `scripts/notify_discord.py` で score >= 0.5 のみ送信.
+  閾値未満は通知済みマークして再評価しない.
+- **Discord embed ⚠️ マーク**: `build_embed(item, is_hype=True)` で title 先頭に ⚠️.
+  `send_batch(items, hype_flags=...)` で並列リストとして渡す.
+- **MCP tool `get_untagged_articles`**: タグ未付与記事を返す (Phase 2 LLM fallback の助走).
+  API 不使用方針に沿い、Claude Desktop/Code から手動でタグ提案させる窓口.
+
+#### Changed
+
+- `UnnotifiedArticle` に `tier: int = 3` と `is_hype: bool = False` を追加.
+- `fetch_unnotified` の SQL に `s.tier` + `a.is_hype` を含める.
+- `upsert_source` で `tier` も書く.
+
+#### Tests
+
+- 350 passed / 2 skipped (Phase 1 比 +51)、ruff format + check 緑化.
+
 ### Phase 1 — Dedup 5-layer + 7-channel Discord (2026-05-13)
 
 #### Added

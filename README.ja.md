@@ -25,7 +25,7 @@
 | 0. 基盤 | Clone + RSS 11ソース + AI 12タグ + テスト緑化 + Discord 1ch | ✅ |
 | 0.5. スクレイパー | +9 ソース (HTML scraper layer) | ✅ |
 | 1. 重複排除 5層 + 7ch Discord | URL正規化/Levenshtein/body_hash/引用元/時系列 + category 別 webhook | ✅ |
-| 2. 信頼度Tier + ハイプフィルタ + LLM fallback | Source tier scoring, hype detection | ⏳ |
+| 2. 信頼度Tier + ハイプフィルタ + LLM fallback | Source tier scoring, hype detection, MCP tagging | ✅ |
 | 3. ベンチマーク + GitHub Trending | LMArena / HF Leaderboard / MTEB / huchenme | ⏳ |
 | 4. パーソナライゼーション | Bayesian推薦、A/B test、リアクション学習 | ⏳ |
 | 5. 日本語 + Podcast | Zenn / Qiita / はてブ / Cognitive Revolution 等 | ⏳ |

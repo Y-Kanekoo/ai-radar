@@ -28,11 +28,13 @@ def discord_channel_for_category(category: str | None) -> str:
 
 @dataclass(frozen=True)
 class UnnotifiedArticle:
-    """通知対象記事. article_id を持つ FeedItem ペア + ソース category."""
+    """通知対象記事. article_id を持つ FeedItem ペア + Phase 2 配信判定用メタ."""
 
     article_id: int
     item: FeedItem
     category: str = ""  # Phase 1 で追加. 既存呼び出し互換のため default 空文字.
+    tier: int = 3  # Phase 2: ソースの信頼度 Tier. 配信スコア計算に使用.
+    is_hype: bool = False  # Phase 2: ハイプフラグ. Discord embed の ⚠️ 表示に使用.
 
 
 def fetch_unnotified(
@@ -68,7 +70,8 @@ def fetch_unnotified(
 
     sql = f"""
         SELECT a.id, a.url, a.title, a.snippet, a.author, a.published_at, a.tags_json,
-               s.name AS source_name, s.category AS source_category
+               a.is_hype,
+               s.name AS source_name, s.category AS source_category, s.tier AS source_tier
         FROM articles a
         JOIN sources s ON a.source_id = s.id
         WHERE NOT EXISTS (
@@ -100,6 +103,8 @@ def fetch_unnotified(
                 article_id=int(r["id"]),
                 item=item,
                 category=r["source_category"] or "",
+                tier=int(r["source_tier"] or 3),
+                is_hype=bool(r["is_hype"]),
             )
         )
     return result

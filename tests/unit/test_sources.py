@@ -108,6 +108,84 @@ def test_default_fetch_kind_is_rss() -> None:
         )
 
 
+# ---------------- Phase 2: tier フィールド ----------------
+
+
+def test_all_sources_have_tier_in_range() -> None:
+    """全ソースの tier が 1-5 の範囲内."""
+    for s in load_sources():
+        assert 1 <= s.tier <= 5, f"{s.slug}: tier={s.tier} は範囲外"
+
+
+def test_official_sources_are_tier1() -> None:
+    """公式リリース系は Tier 1."""
+    by_slug = {s.slug: s for s in load_sources()}
+    assert by_slug["huggingface-blog"].tier == 1
+    assert by_slug["google-research-blog"].tier == 1
+    assert by_slug["anthropic-news"].tier == 1
+
+
+def test_arxiv_is_tier2() -> None:
+    """arxiv は査読系で Tier 2."""
+    by_slug = {s.slug: s for s in load_sources()}
+    assert by_slug["arxiv-cs-lg"].tier == 2
+
+
+def test_newsletter_is_tier3() -> None:
+    """ニュースレターはキュレーションで Tier 3."""
+    by_slug = {s.slug: s for s in load_sources()}
+    assert by_slug["tldr-ai"].tier == 3
+    assert by_slug["bens-bites"].tier == 3
+    assert by_slug["latent-space"].tier == 3
+
+
+def test_default_tier_when_missing(tmp_path: Path) -> None:
+    """yaml に tier 無しなら 3 が default."""
+    yaml_text = """
+version: 1
+sources:
+  - slug: notier
+    name: NoTier
+    feed_url: https://e.com/feed
+    site_url: https://e.com
+    language: en
+    category: release
+    enabled: true
+    fetch_policy:
+      min_interval_seconds: 0
+      max_items_per_fetch: 10
+    license_note: ok
+"""
+    p = tmp_path / "notier.yaml"
+    p.write_text(yaml_text, encoding="utf-8")
+    sources = load_sources(p)
+    assert sources[0].tier == 3
+
+
+def test_invalid_tier_raises(tmp_path: Path) -> None:
+    """tier が 1-5 範囲外なら ValueError."""
+    yaml_text = """
+version: 1
+sources:
+  - slug: bad
+    name: Bad
+    feed_url: https://e.com/feed
+    site_url: https://e.com
+    language: en
+    category: release
+    tier: 99
+    enabled: true
+    fetch_policy:
+      min_interval_seconds: 0
+      max_items_per_fetch: 10
+    license_note: ok
+"""
+    p = tmp_path / "bad.yaml"
+    p.write_text(yaml_text, encoding="utf-8")
+    with pytest.raises(ValueError, match="tier"):
+        load_sources(p)
+
+
 def test_invalid_fetch_kind_raises(tmp_path: Path) -> None:
     """sources.yaml の fetch_kind が 'rss'/'scraper' 以外なら ValueError."""
     yaml_text = """

@@ -31,6 +31,14 @@ class SourceConfig:
 
     fetch_kind="rss" (デフォルト) は feedparser 経路、"scraper" は
     `crawler.scrapers` に登録された per-source HTML parser を使う.
+
+    tier (Phase 2): 信頼度ティア 1-5.
+        1 = 公式 (anthropic.com / arxiv.org 等)
+        2 = 査読系 (The Information / MIT TR 等)
+        3 = キュレーション (TLDR / Ben's Bites 等)
+        4 = 個人 (Substack / Medium / HN 等)
+        5 = SNS拡散・まとめ・自動翻訳
+        Discord 配信スコアの第1因子. yaml 未指定なら 3.
     """
 
     slug: str
@@ -44,6 +52,8 @@ class SourceConfig:
     license_note: str
     # Phase 0.5: scraper サポート. 旧 yaml との後方互換のためデフォルト "rss"
     fetch_kind: str = "rss"
+    # Phase 2: 信頼度ティア (1=公式, 5=SNS). yaml 未指定なら 3.
+    tier: int = 3
 
 
 @dataclass(frozen=True)
@@ -76,6 +86,9 @@ def load_sources(path: Path = DEFAULT_SOURCES_PATH) -> list[SourceConfig]:
                 f"{entry.get('slug')!r}: 不正な fetch_kind {fetch_kind!r} "
                 f"(rss | scraper のいずれか)"
             )
+        tier = int(entry.get("tier", 3))
+        if not 1 <= tier <= 5:
+            raise ValueError(f"{entry.get('slug')!r}: 不正な tier {tier!r} (1〜5 のいずれか)")
         sources.append(
             SourceConfig(
                 slug=entry["slug"],
@@ -91,6 +104,7 @@ def load_sources(path: Path = DEFAULT_SOURCES_PATH) -> list[SourceConfig]:
                 ),
                 license_note=entry.get("license_note", ""),
                 fetch_kind=fetch_kind,
+                tier=tier,
             )
         )
     return sources

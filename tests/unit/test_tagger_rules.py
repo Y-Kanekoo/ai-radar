@@ -117,6 +117,46 @@ source_tags:
     assert config.get_source_tags("unknown") == ()
 
 
+# ---------------- Phase 2: anti_tags / hype_keywords ----------------
+
+
+def test_real_yaml_loads_anti_tags() -> None:
+    """tag_rules.yaml の anti_tags が読み込まれる."""
+    config = load_tagger_config()
+    assert "hiring" in config.anti_tags
+    assert "採用" in config.anti_tags or "careers" in config.anti_tags
+
+
+def test_real_yaml_loads_hype_keywords() -> None:
+    """tag_rules.yaml の hype_keywords が読み込まれる."""
+    config = load_tagger_config()
+    assert "revolutionary" in config.hype_keywords
+    assert "breakthrough" in config.hype_keywords
+    assert "革命的" in config.hype_keywords
+
+
+def test_hype_keywords_lowercased() -> None:
+    """hype_keywords は yaml ロード時に小文字化される."""
+    config = load_tagger_config()
+    for kw in config.hype_keywords:
+        assert kw == kw.lower()
+
+
+def test_anti_tags_lowercased() -> None:
+    config = load_tagger_config()
+    for kw in config.anti_tags:
+        assert kw == kw.lower()
+
+
+def test_empty_yaml_has_empty_phase2_fields(tmp_path: Path) -> None:
+    """anti_tags / hype_keywords を含まない yaml でも 後方互換 (空 tuple)."""
+    p = tmp_path / "minimal.yaml"
+    p.write_text("version: 1\n", encoding="utf-8")
+    config = load_tagger_config(p)
+    assert config.anti_tags == ()
+    assert config.hype_keywords == ()
+
+
 def test_real_yaml_has_source_tags_for_ai_sources() -> None:
     """実際の tag_rules.yaml に Phase 0 / 0.5 主要ソースの source_tags が定義されている."""
     config = load_tagger_config()

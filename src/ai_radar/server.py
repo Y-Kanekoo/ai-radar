@@ -38,6 +38,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from ai_radar.db import init_db
 from ai_radar.tools import (
     get_article_impl,
+    get_untagged_articles_impl,
     list_recent_impl,
     list_sources_impl,
     list_tags_impl,
@@ -209,6 +210,30 @@ def list_tags(
     """
     db = ctx.request_context.lifespan_context.db
     return list_tags_impl(db, min_count=min_count, limit=limit)
+
+
+@mcp.tool()
+def get_untagged_articles(
+    ctx: Context,
+    days: int = 7,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """キーワードベースで 0 タグになった記事を返す (Phase 2: LLM fallback の補助).
+
+    Claude Desktop / Code から呼び出し、結果を見て Claude に手動でタグを提案させる
+    用途. API 不使用方針に沿いサーバ側では LLM を呼ばない. 「次に挙げる記事に
+    {12 タグ} のうち適切なものを選んで割り当てて」と Claude に頼むのが想定動線.
+
+    Args:
+        days: 直近何日分を対象にするか (1〜30、既定 7).
+        limit: 最大件数 (1〜50、既定 20).
+
+    Returns:
+        [{id, title, url, snippet, source_name, published_at, tags}, ...] のリスト.
+        ほとんどの記事で tags は空配列.
+    """
+    db = ctx.request_context.lifespan_context.db
+    return get_untagged_articles_impl(db, days=days, limit=limit)
 
 
 # ---------------- Phase 8: summarize_article (opt-in) ----------------

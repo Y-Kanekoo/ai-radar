@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from ai_radar.tagger.engine import assign_tags
+from ai_radar.tagger.engine import (
+    HYPE_MIN_TIER,
+    assign_tags,
+    detect_hype,
+    is_blocked_by_anti_tag,
+)
 from ai_radar.tagger.rules import (
     CoOccurrenceRule,
     TaggerConfig,
@@ -236,3 +241,138 @@ def test_real_yaml_tool_requires_co_tag() -> None:
     # tool キーワードのみのスコアでは threshold=2 に到達しないか、co_tag バイパスが効かない
     # 結果として tool は単独では付かない
     assert "tool" not in result
+
+
+# ---------------- Phase 2: anti_tag / hype 検出 ----------------
+
+
+class TestIsBlockedByAntiTag:
+    def test_returns_false_when_anti_tags_empty(self) -> None:
+        config = _config([TagRule("x", ("foo",), False)])
+        # anti_tags フィールド未指定 → デフォルト空 tuple
+        assert is_blocked_by_anti_tag("title", "body", config) is False
+
+    def test_detects_hiring_in_title(self) -> None:
+        config = TaggerConfig(
+            rules=(),
+            co_occurrence=(),
+            source_tags=(),
+            max_tags=3,
+            threshold=2,
+            weight_title=2,
+            weight_body=1,
+            anti_tags=("hiring", "採用"),
+        )
+        assert is_blocked_by_anti_tag("We're hiring", "Join us", config) is True
+
+    def test_detects_jp_anti_tag_in_body(self) -> None:
+        config = TaggerConfig(
+            rules=(),
+            co_occurrence=(),
+            source_tags=(),
+            max_tags=3,
+            threshold=2,
+            weight_title=2,
+            weight_body=1,
+            anti_tags=("採用",),
+        )
+        assert is_blocked_by_anti_tag("通常タイトル", "QAエンジニア採用情報", config) is True
+
+    def test_no_anti_tag_match_returns_false(self) -> None:
+        config = TaggerConfig(
+            rules=(),
+            co_occurrence=(),
+            source_tags=(),
+            max_tags=3,
+            threshold=2,
+            weight_title=2,
+            weight_body=1,
+            anti_tags=("hiring", "event registration"),
+        )
+        assert is_blocked_by_anti_tag("Normal article", "Regular content", config) is False
+
+    def test_real_yaml_blocks_hiring(self) -> None:
+        """実際の tag_rules.yaml の anti_tags で 'careers' を検出."""
+        config = load_tagger_config()
+        assert is_blocked_by_anti_tag("Join our team", "careers at OpenAI", config) is True
+
+
+class TestDetectHype:
+    def test_tier_1_never_hype(self) -> None:
+        """Tier 1 (公式) はハイプ語があっても is_hype=False."""
+        config = TaggerConfig(
+            rules=(),
+            co_occurrence=(),
+            source_tags=(),
+            max_tags=3,
+            threshold=2,
+            weight_title=2,
+            weight_body=1,
+            hype_keywords=("revolutionary", "breakthrough"),
+        )
+        assert detect_hype("Revolutionary breakthrough!", "", source_tier=1, config=config) is False
+        assert detect_hype("Revolutionary breakthrough!", "", source_tier=3, config=config) is False
+
+    def test_tier_4_with_hype_keyword(self) -> None:
+        config = TaggerConfig(
+            rules=(),
+            co_occurrence=(),
+            source_tags=(),
+            max_tags=3,
+            threshold=2,
+            weight_title=2,
+            weight_body=1,
+            hype_keywords=("revolutionary",),
+        )
+        assert detect_hype("This is revolutionary!", "", source_tier=4, config=config) is True
+
+    def test_tier_5_with_hype_in_body(self) -> None:
+        config = TaggerConfig(
+            rules=(),
+            co_occurrence=(),
+            source_tags=(),
+            max_tags=3,
+            threshold=2,
+            weight_title=2,
+            weight_body=1,
+            hype_keywords=("agi achieved",),
+        )
+        assert detect_hype("Title", "AGI achieved finally!", source_tier=5, config=config) is True
+
+    def test_tier_4_without_hype_keyword(self) -> None:
+        config = TaggerConfig(
+            rules=(),
+            co_occurrence=(),
+            source_tags=(),
+            max_tags=3,
+            threshold=2,
+            weight_title=2,
+            weight_body=1,
+            hype_keywords=("breakthrough",),
+        )
+        assert (
+            detect_hype("Normal article", "regular content", source_tier=4, config=config) is False
+        )
+
+    def test_empty_hype_keywords(self) -> None:
+        """hype_keywords 空なら Tier 4-5 でも False."""
+        config = TaggerConfig(
+            rules=(),
+            co_occurrence=(),
+            source_tags=(),
+            max_tags=3,
+            threshold=2,
+            weight_title=2,
+            weight_body=1,
+        )
+        assert detect_hype("Revolutionary breakthrough", "", source_tier=5, config=config) is False
+
+    def test_hype_min_tier_is_4(self) -> None:
+        """ハイプフィルタ閾値 Tier は 4."""
+        assert HYPE_MIN_TIER == 4
+
+    def test_real_yaml_jp_hype_word(self) -> None:
+        """実 yaml の日本語ハイプ語 '革命的' を Tier 4 で検出."""
+        config = load_tagger_config()
+        result = detect_hype("革命的なAIモデルが登場", "", source_tier=4, config=config)
+        assert result is True

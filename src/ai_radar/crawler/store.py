@@ -29,6 +29,8 @@ class ArticleRow:
     normalized_url: str | None = None
     thread_id: int | None = None
     cluster_id: int | None = None
+    # Phase 2 (ai-radar 0.2): ハイプフィルタ警告フラグ.
+    is_hype: bool = False
 
 
 def upsert_source(conn: sqlite3.Connection, source: SourceConfig) -> int:
@@ -39,15 +41,16 @@ def upsert_source(conn: sqlite3.Connection, source: SourceConfig) -> int:
     """
     conn.execute(
         """
-        INSERT INTO sources (slug, name, feed_url, site_url, language, category, enabled)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO sources (slug, name, feed_url, site_url, language, category, enabled, tier)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(slug) DO UPDATE SET
             name = excluded.name,
             feed_url = excluded.feed_url,
             site_url = excluded.site_url,
             language = excluded.language,
             category = excluded.category,
-            enabled = excluded.enabled
+            enabled = excluded.enabled,
+            tier = excluded.tier
         """,
         (
             source.slug,
@@ -57,6 +60,7 @@ def upsert_source(conn: sqlite3.Connection, source: SourceConfig) -> int:
             source.language,
             source.category,
             int(source.enabled),
+            int(source.tier),
         ),
     )
     conn.commit()
@@ -77,8 +81,8 @@ def insert_article(conn: sqlite3.Connection, article: ArticleRow) -> bool:
             INSERT INTO articles
                 (source_id, guid, url, title, snippet, body_hash, body, author,
                  published_at, fetched_at, tags_json,
-                 normalized_url, thread_id, cluster_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 normalized_url, thread_id, cluster_id, is_hype)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 article.source_id,
@@ -95,6 +99,7 @@ def insert_article(conn: sqlite3.Connection, article: ArticleRow) -> bool:
                 article.normalized_url,
                 article.thread_id,
                 article.cluster_id,
+                int(article.is_hype),
             ),
         )
         conn.commit()

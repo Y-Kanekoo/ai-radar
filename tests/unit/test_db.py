@@ -163,9 +163,69 @@ def test_v2_to_v3_migration_adds_columns(tmp_path: Path) -> None:
         assert "normalized_url" in cols_after
         assert "thread_id" in cols_after
         assert "cluster_id" in cols_after
-        # schema_version が 3 になっている
+        # schema_version が最新 (Phase 2 で v4) になっている
         row = conn.execute("SELECT version FROM schema_version").fetchone()
-        assert row["version"] == 3
+        assert row["version"] == 4
+    finally:
+        conn.close()
+
+
+# ---------------- Phase 2: v4 マイグレーション ----------------
+
+
+def test_v4_columns_present_in_fresh_db(tmp_path: Path) -> None:
+    """新規 DB は v4 カラム (articles.is_hype + sources.tier) を持つ."""
+    conn = init_db(tmp_path / "test.db")
+    try:
+        a_cols = {row["name"] for row in conn.execute("PRAGMA table_info(articles)")}
+        s_cols = {row["name"] for row in conn.execute("PRAGMA table_info(sources)")}
+        assert "is_hype" in a_cols
+        assert "tier" in s_cols
+    finally:
+        conn.close()
+
+
+def test_v3_to_v4_migration(tmp_path: Path) -> None:
+    """v3 既存 DB を v4 のコードで開くと is_hype + tier カラムが追加される."""
+    import sqlite3
+
+    db_path = tmp_path / "test.db"
+
+    # v3 相当のスキーマを手動で作成 (Phase 1 までの状態)
+    raw = sqlite3.connect(db_path)
+    raw.executescript("""
+        CREATE TABLE sources (
+            id INTEGER PRIMARY KEY, slug TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+            feed_url TEXT NOT NULL, site_url TEXT, language TEXT NOT NULL,
+            category TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+            last_fetched_at INTEGER, last_etag TEXT, last_modified TEXT,
+            consecutive_errors INTEGER DEFAULT 0
+        );
+        CREATE TABLE articles (
+            id INTEGER PRIMARY KEY, guid TEXT NOT NULL,
+            source_id INTEGER NOT NULL REFERENCES sources(id),
+            url TEXT NOT NULL, title TEXT NOT NULL, snippet TEXT NOT NULL,
+            body_hash TEXT NOT NULL, body TEXT, author TEXT,
+            published_at INTEGER NOT NULL, fetched_at INTEGER NOT NULL,
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            normalized_url TEXT, thread_id INTEGER, cluster_id INTEGER,
+            UNIQUE(source_id, guid)
+        );
+        CREATE TABLE schema_version (version INTEGER PRIMARY KEY);
+        INSERT INTO schema_version(version) VALUES (3);
+    """)
+    raw.commit()
+    raw.close()
+
+    # init_db で v4 に upgrade
+    conn = init_db(db_path)
+    try:
+        a_cols = {row["name"] for row in conn.execute("PRAGMA table_info(articles)")}
+        s_cols = {row["name"] for row in conn.execute("PRAGMA table_info(sources)")}
+        assert "is_hype" in a_cols
+        assert "tier" in s_cols
+        row = conn.execute("SELECT version FROM schema_version").fetchone()
+        assert row["version"] == 4
     finally:
         conn.close()
 
@@ -184,6 +244,7 @@ def test_v2_to_v3_migration_is_idempotent(tmp_path: Path) -> None:
     conn2 = init_db(db_path)
     try:
         row = conn2.execute("SELECT version FROM schema_version").fetchone()
-        assert row["version"] == 3
+        # 最新スキーマへ更新される (Phase 2 で v4)
+        assert row["version"] == 4
     finally:
         conn2.close()

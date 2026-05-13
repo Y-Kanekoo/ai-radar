@@ -315,7 +315,7 @@ def test_v1_to_v3_migration_adds_table_and_columns(tmp_path: Path) -> None:
     assert "normalized_url" in cols
     assert "thread_id" in cols
     assert "cluster_id" in cols
-    # version も3に更新されている
+    # version も最新 (Phase 2 で v4) に更新されている
     row = conn.execute("SELECT version FROM schema_version").fetchone()
-    assert row["version"] == 3
+    assert row["version"] == 4
     conn.close()

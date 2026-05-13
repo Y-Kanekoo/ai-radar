@@ -32,7 +32,13 @@ class CoOccurrenceRule:
 
 @dataclass(frozen=True)
 class TaggerConfig:
-    """tag_rules.yaml 全体をロードした結果."""
+    """tag_rules.yaml 全体をロードした結果.
+
+    Phase 2 拡張:
+        hype_keywords: ハイプ検出用キーワード集合 (全部小文字)
+        anti_tags:     配信除外用キーワード集合 (採用/イベント告知/sponsored 等)
+    どちらも既存 yaml に未定義なら空 tuple. 後方互換.
+    """
 
     rules: tuple[TagRule, ...]
     co_occurrence: tuple[CoOccurrenceRule, ...]
@@ -42,6 +48,9 @@ class TaggerConfig:
     threshold: int
     weight_title: int
     weight_body: int
+    # Phase 2: ハイプ検出 + 配信除外 (デフォルト空 tuple で後方互換)
+    hype_keywords: tuple[str, ...] = ()
+    anti_tags: tuple[str, ...] = ()
 
     def get_source_tags(self, slug: str) -> tuple[str, ...]:
         """指定 slug のソース固定タグを返す. 未定義なら空 tuple."""
@@ -90,6 +99,10 @@ def load_tagger_config(path: Path = DEFAULT_TAG_RULES_PATH) -> TaggerConfig:
         (str(slug), tuple(str(t) for t in (tags or []))) for slug, tags in source_tags_raw.items()
     )
 
+    # Phase 2: hype_keywords / anti_tags. yaml にトップレベルキーで列挙される.
+    hype_keywords = tuple(str(k).lower() for k in (data.get("hype_keywords") or []))
+    anti_tags = tuple(str(k).lower() for k in (data.get("anti_tags") or []))
+
     return TaggerConfig(
         rules=rules,
         co_occurrence=co_occurrence,
@@ -98,4 +111,6 @@ def load_tagger_config(path: Path = DEFAULT_TAG_RULES_PATH) -> TaggerConfig:
         threshold=int(defaults.get("threshold", 2)),
         weight_title=int(defaults.get("weight_title", 2)),
         weight_body=int(defaults.get("weight_body", 1)),
+        hype_keywords=hype_keywords,
+        anti_tags=anti_tags,
     )

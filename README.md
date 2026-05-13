@@ -27,7 +27,7 @@ For the Japanese readme, see [README.ja.md](README.ja.md).
 | 0. Foundation | Clone + 11 RSS sources + 12 AI tags + tests green + 1ch Discord | ✅ |
 | 0.5. Scrapers | +9 sources (HTML scraper layer for Anthropic / HF Papers / Cursor etc.) | ✅ |
 | 1. Dedup 5-layer + 7-channel Discord | URL/Levenshtein/body_hash/thread/cluster + category webhooks | ✅ |
-| 2. Trust-tier + hype-filter + LLM fallback | Source tier scoring, hype detection, MCP-based tagging | ⏳ |
+| 2. Trust-tier + hype-filter + LLM fallback | Source tier scoring, hype detection, MCP-based tagging | ✅ |
 | 3. Benchmarks + GitHub Trending | LMArena / HF Leaderboard / MTEB / huchenme | ⏳ |
 | 4. Personalization | Bayesian recommendation, A/B test, reaction learning | ⏳ |
 | 5. JP sources + Podcast | Zenn / Qiita / Hatena / Cognitive Revolution etc. | ⏳ |
@@ -59,6 +59,52 @@ and license notes.
 
 Configured in [config/tag_rules.yaml](config/tag_rules.yaml) with co-occurrence
 rules, hype-keyword filter (Phase 2), and source-fixed tags.
+
+## Trust-tier scoring (Phase 2)
+
+Each article receives a delivery score before Discord notification:
+
+```
+score = source_tier_score(tier) × time_decay(category, age) × user_interest
+        × (1 - hype_penalty if is_hype else 1.0)
+```
+
+| Tier | Source kind | Score weight |
+|---|---|---|
+| 1 | Official (Anthropic, arXiv, Google Research) | 1.0 |
+| 2 | Peer-reviewed (arxiv preprints, MIT TR) | 0.8 |
+| 3 | Curation (TLDR AI, Ben's Bites, Latent Space) | 0.7 |
+| 4 | Personal blog (Substack, Medium, HN) | 0.5 |
+| 5 | SNS / aggregators / auto-translation | 0.3 |
+
+Time decay λ per category: `release=0.5` (half-life 1.4d), `benchmark=0.3` (2.3d),
+`paper=0.05` (14d), `tutorial=0.01` (70d). Delivery threshold = 0.5.
+
+Articles below threshold are marked as notified (skipped from re-evaluation).
+
+## Hype filter (Phase 2)
+
+Articles from Tier 4-5 sources with hype keywords (`revolutionary`, `breakthrough`,
+`AGI achieved`, `革命的`, etc.) get `is_hype=true`. Discord embed titles are prefixed
+with **⚠️** and the score is halved (`HYPE_PENALTY=0.5`).
+
+## Anti-tag filter (Phase 2)
+
+Articles whose title or body matches `anti_tags` (hiring / careers / sponsored / 採用 etc.)
+are skipped during crawl, never reaching Discord or RSS.
+
+## MCP LLM fallback (Phase 2)
+
+`get_untagged_articles(days, limit)` MCP tool returns articles with empty tag arrays.
+Use it from Claude Desktop / Code to manually request tag suggestions:
+
+```
+@ai-radar Get the untagged articles from the last 7 days and suggest tags
+from the 12 AI taxonomy.
+```
+
+ai-radar does **not** call any LLM API — Claude (yours) does the reasoning within
+the Pro/Max subscription.
 
 ## Dedup 5-layer (Phase 1)
 
@@ -102,13 +148,14 @@ Configure these as **GitHub Actions secrets** for the `crawl.yml` workflow.
 
 ## MCP server usage
 
-The local MCP server exposes 5 tools you can call from Claude Desktop / Claude Code:
+The local MCP server exposes 6 tools you can call from Claude Desktop / Claude Code:
 
 - `search_articles(query, tags?, date_from?, date_to?, limit, offset)` — full-text search via SQLite FTS5+BM25
 - `list_recent(days, source?, tag?, limit)` — recent articles
 - `get_article(article_id, include_body)` — article details
 - `list_sources()` — aggregated sources with counts
 - `list_tags(min_count, limit)` — tag occurrence counts
+- `get_untagged_articles(days, limit)` — Phase 2 LLM-fallback helper (untagged articles for manual classification)
 
 Register it in your MCP client config (`claude_desktop_config.json` or `.mcp.json`):
 

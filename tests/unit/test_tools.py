@@ -388,3 +388,81 @@ def test_list_tags_rejects_invalid_args(tmp_path: Path) -> None:
             list_tags_impl(conn, limit=1000)
     finally:
         conn.close()
+
+
+# ---------------- Phase 2: get_untagged_articles ----------------
+
+
+def _untagged_article(sid: int, guid: str, published_at: int) -> ArticleRow:
+    """tags 空配列で挿入するための helper. _article の `tags or ["e2e"]` を回避."""
+    return ArticleRow(
+        source_id=sid,
+        guid=guid,
+        url=f"https://example.com/{guid}",
+        title=f"Untagged {guid}",
+        snippet=f"snip-{guid}",
+        body_hash=guid,
+        body="body",
+        author=None,
+        published_at=published_at,
+        tags=[],
+    )
+
+
+def test_get_untagged_articles_returns_only_empty_tags(tmp_path: Path) -> None:
+    """tags_json が空の記事のみ返す."""
+    import time as _t
+
+    from ai_radar.tools import get_untagged_articles_impl
+
+    conn = _setup_db(tmp_path)
+    try:
+        sid = upsert_source(conn, _src())
+        now = int(_t.time())
+        # tagged (tags 有り)
+        insert_article(conn, _article(sid, "g1", tags=["llm"], published_at=now))
+        # untagged (tags 空)
+        insert_article(conn, _untagged_article(sid, "g2", published_at=now))
+        result = get_untagged_articles_impl(conn)
+        urls = {r["url"] for r in result}
+        assert "https://example.com/g2" in urls
+        assert "https://e.com/g1" not in urls
+    finally:
+        conn.close()
+
+
+def test_get_untagged_articles_respects_days(tmp_path: Path) -> None:
+    """days で指定された範囲外の古い記事は除外."""
+    import time as _t
+
+    from ai_radar.tools import get_untagged_articles_impl
+
+    conn = _setup_db(tmp_path)
+    try:
+        sid = upsert_source(conn, _src())
+        now = int(_t.time())
+        insert_article(conn, _untagged_article(sid, "g_old", published_at=now - 86400 * 60))
+        insert_article(conn, _untagged_article(sid, "g_new", published_at=now))
+        result = get_untagged_articles_impl(conn, days=7)
+        urls = {r["url"] for r in result}
+        assert "https://example.com/g_new" in urls
+        assert "https://example.com/g_old" not in urls
+    finally:
+        conn.close()
+
+
+def test_get_untagged_articles_validates_args(tmp_path: Path) -> None:
+    from ai_radar.tools import get_untagged_articles_impl
+
+    conn = _setup_db(tmp_path)
+    try:
+        with pytest.raises(ValueError, match="days"):
+            get_untagged_articles_impl(conn, days=0)
+        with pytest.raises(ValueError, match="days"):
+            get_untagged_articles_impl(conn, days=100)
+        with pytest.raises(ValueError, match="limit"):
+            get_untagged_articles_impl(conn, limit=0)
+        with pytest.raises(ValueError, match="limit"):
+            get_untagged_articles_impl(conn, limit=100)
+    finally:
+        conn.close()

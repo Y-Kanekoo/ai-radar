@@ -32,6 +32,7 @@ import os
 import sys
 from pathlib import Path
 
+from ai_radar.crawler.scoring import should_deliver
 from ai_radar.db import init_db
 from ai_radar.publisher.discord import (
     CATEGORY_ENV_PREFIX,
@@ -97,30 +98,75 @@ def _dispatch_category(
     rate_delay: float,
     dry_run: bool,
     log: logging.Logger,
-) -> tuple[int, int]:
-    """1 カテゴリ分の未通知記事を送信して、成功/失敗の件数を返す."""
+) -> tuple[int, int, int]:
+    """1 カテゴリ分の未通知記事を送信する.
+
+    Phase 2: score >= SCORE_THRESHOLD の記事のみ配信. 閾値以下は配信せず通知済みに
+    マーク (再評価しない). Tier 4-5 + ハイプキーワードヒットの記事は title 先頭に
+    ⚠️ を付けて送る.
+
+    Returns:
+        (送信成功件数, 送信失敗件数, score 閾値未満で skip した件数).
+    """
     channel = discord_channel_for_category(category)
     targets = fetch_unnotified(conn, channel=channel, limit=limit, category=category)
     if not targets:
         log.debug("%s: 未通知記事なし", category)
-        return (0, 0)
+        return (0, 0, 0)
 
-    log.info("%s: 未通知 %d 件 (channel=%s)", category, len(targets), channel)
+    # Phase 2: score フィルタで配信対象とスキップを分ける
+    eligible = []
+    skipped = []
+    for t in targets:
+        if should_deliver(
+            tier=t.tier,
+            category=t.category,
+            published_at=t.item.published_at,
+            is_hype=t.is_hype,
+        ):
+            eligible.append(t)
+        else:
+            skipped.append(t)
+
+    log.info(
+        "%s: 未通知 %d 件 (配信対象 %d / score 閾値未満 %d, channel=%s)",
+        category,
+        len(targets),
+        len(eligible),
+        len(skipped),
+        channel,
+    )
+
+    # 閾値未満も通知済みとしてマーク (次回 fetch から除外)
+    for t in skipped:
+        mark_notified(conn, t.article_id, channel=channel)
+
+    if not eligible:
+        return (0, 0, len(skipped))
 
     if dry_run:
-        for t in targets:
-            log.info("[DRY %s] %s — %s", category, t.item.title, t.item.url)
-        return (0, 0)
+        for t in eligible:
+            mark = "⚠️ " if t.is_hype else ""
+            log.info("[DRY %s] %s%s — %s", category, mark, t.item.title, t.item.url)
+        return (0, 0, len(skipped))
 
-    items = [t.item for t in targets]
-    success, failure = asyncio.run(send_batch(items, webhook_url, rate_limit_delay=rate_delay))
+    items = [t.item for t in eligible]
+    hype_flags = [t.is_hype for t in eligible]
+    success, failure = asyncio.run(
+        send_batch(
+            items,
+            webhook_url,
+            rate_limit_delay=rate_delay,
+            hype_flags=hype_flags,
+        )
+    )
     log.info("%s: 送信完了 success=%d failure=%d", category, success, failure)
 
     # 成功した先頭から `success` 件を mark する
-    for t in targets[:success]:
+    for t in eligible[:success]:
         mark_notified(conn, t.article_id, channel=channel)
 
-    return (success, failure)
+    return (success, failure, len(skipped))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -151,13 +197,14 @@ def main(argv: list[str] | None = None) -> int:
     conn = init_db(args.db_path)
     total_success = 0
     total_failure = 0
+    total_skipped = 0
     try:
         for category in KNOWN_CATEGORIES:
             webhook = resolve_webhook(category)
             if not webhook:
                 log.debug("%s: webhook 未設定 (fallback も無し)", category)
                 continue
-            success, failure = _dispatch_category(
+            success, failure, skipped = _dispatch_category(
                 conn,
                 category=category,
                 webhook_url=webhook,
@@ -168,10 +215,16 @@ def main(argv: list[str] | None = None) -> int:
             )
             total_success += success
             total_failure += failure
+            total_skipped += skipped
     finally:
         conn.close()
 
-    log.info("全カテゴリ合計: success=%d failure=%d", total_success, total_failure)
+    log.info(
+        "全カテゴリ合計: success=%d failure=%d score閾値未満=%d",
+        total_success,
+        total_failure,
+        total_skipped,
+    )
     return 0 if total_failure == 0 else 2
 
 

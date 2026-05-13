@@ -252,3 +252,44 @@ def list_tags_impl(
     """
     rows = conn.execute(sql, [min_count, limit]).fetchall()
     return [{"tag": r["tag"], "count": int(r["cnt"])} for r in rows]
+
+
+# ---------------- get_untagged_articles (Phase 2: LLM fallback) ----------------
+
+
+def get_untagged_articles_impl(
+    conn: sqlite3.Connection,
+    *,
+    days: int = 7,
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    """キーワードベースのタグ付けで 0 タグになった記事を返す (Phase 2 LLM fallback).
+
+    Claude Desktop / Code から MCP で呼び出し、ユーザが結果を見ながら手動で適切な
+    タグを Claude に提案させる用途. API 不使用方針に沿い、サーバ側では LLM を呼ばない.
+
+    Args:
+        days: 直近何日分を対象にするか (1〜30).
+        limit: 最大件数 (1〜50).
+
+    Returns:
+        各記事の {id, title, url, snippet, source_name, published_at, tags} dict.
+        tags は基本的に空配列 (キーワードヒット 0 件のため).
+    """
+    if not 1 <= days <= 30:
+        raise ValueError("days は 1〜30 の範囲で指定してください")
+    if not 1 <= limit <= 50:
+        raise ValueError("limit は 1〜50 の範囲で指定してください")
+
+    since = int(datetime.now(tz=UTC).timestamp()) - days * 86400
+    sql = """
+        SELECT a.id, a.title, a.url, a.snippet, a.author, a.published_at, a.tags_json,
+               s.name AS source_name
+        FROM articles a JOIN sources s ON a.source_id = s.id
+        WHERE a.published_at >= ?
+          AND (a.tags_json IS NULL OR a.tags_json = '[]' OR a.tags_json = '')
+        ORDER BY a.published_at DESC
+        LIMIT ?
+    """
+    rows = conn.execute(sql, [since, limit]).fetchall()
+    return [_row_to_card(r) for r in rows]
