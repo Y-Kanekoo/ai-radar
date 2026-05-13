@@ -146,3 +146,82 @@ def mark_notified_bulk(
     )
     conn.commit()
     return cur.rowcount or 0
+
+
+def mark_notified_with_message_id(
+    conn: sqlite3.Connection,
+    article_id: int,
+    *,
+    channel: str = DISCORD_CHANNEL,
+    discord_message_id: str | None,
+    discord_channel_id: str | None,
+) -> None:
+    """記事を通知済みとしてマークし、Discord message_id を保存する (Phase 4a).
+
+    webhook 送信時に ``?wait=true`` で取得した message_id と channel_id を保存して
+    Bot API のリアクション取得キーに使う. 既存の (article_id, channel) UNIQUE 行が
+    あれば UPDATE で message_id を上書きする (再投稿対応).
+    """
+    now = int(time.time())
+    conn.execute(
+        """
+        INSERT INTO article_notifications
+            (article_id, channel, notified_at, discord_message_id, discord_channel_id)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(article_id, channel) DO UPDATE SET
+            notified_at = excluded.notified_at,
+            discord_message_id = COALESCE(excluded.discord_message_id, discord_message_id),
+            discord_channel_id = COALESCE(excluded.discord_channel_id, discord_channel_id)
+        """,
+        (article_id, channel, now, discord_message_id, discord_channel_id),
+    )
+    conn.commit()
+
+
+@dataclass(frozen=True)
+class NotifiedMessage:
+    """Phase 4a: リアクション収集のキーとなる送信済みメッセージ.
+
+    Bot API でメッセージを取得するには ``(channel_id, message_id)`` の組が必要.
+    article_id を残しておくのは reactions テーブルに紐付けるため.
+    """
+
+    article_id: int
+    channel: str
+    discord_message_id: str
+    discord_channel_id: str
+    notified_at: int
+
+
+def fetch_notifications_with_message_id(
+    conn: sqlite3.Connection,
+    *,
+    since_unix: int,
+    limit: int = 200,
+) -> list[NotifiedMessage]:
+    """``discord_message_id`` が記録済みかつ ``notified_at >= since_unix`` の通知を返す.
+
+    Reaction collector で過去 N 日分の (message_id, channel_id) を引くのに使う.
+    """
+    rows = conn.execute(
+        """
+        SELECT article_id, channel, notified_at, discord_message_id, discord_channel_id
+        FROM article_notifications
+        WHERE discord_message_id IS NOT NULL
+          AND discord_channel_id IS NOT NULL
+          AND notified_at >= ?
+        ORDER BY notified_at DESC
+        LIMIT ?
+        """,
+        (since_unix, limit),
+    ).fetchall()
+    return [
+        NotifiedMessage(
+            article_id=int(r["article_id"]),
+            channel=str(r["channel"]),
+            discord_message_id=str(r["discord_message_id"]),
+            discord_channel_id=str(r["discord_channel_id"]),
+            notified_at=int(r["notified_at"]),
+        )
+        for r in rows
+    ]

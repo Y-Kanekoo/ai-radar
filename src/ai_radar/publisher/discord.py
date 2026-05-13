@@ -163,6 +163,66 @@ async def send_notification(
             await used.aclose()
 
 
+async def send_notification_with_message_id(
+    item: FeedItem,
+    webhook_url: str,
+    *,
+    is_hype: bool = False,
+    client: httpx.AsyncClient | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+    max_retries: int = 1,
+) -> tuple[bool, str | None, str | None]:
+    """Phase 4a: webhook を ``?wait=true`` で送り、Discord 側 message_id を返す.
+
+    リアクション読み取り (Bot API) のキーとして必要なので message_id と channel_id を
+    response から取り出して保存する. 失敗時は ``(False, None, None)``. 成功して
+    message_id が返らない (古い Discord 仕様等) 場合は ``(True, None, None)``.
+    """
+    payload = build_payload(item, is_hype=is_hype)
+    # wait=true で投稿後のメッセージ JSON を返してもらう.
+    url = webhook_url + "&wait=true" if "?" in webhook_url else webhook_url + "?wait=true"
+
+    own_client = client is None
+    used = client if client is not None else httpx.AsyncClient(timeout=timeout)
+    try:
+        for attempt in range(max_retries + 1):
+            try:
+                resp = await used.post(url, json=payload)
+            except httpx.HTTPError as e:
+                logger.warning("Discord 送信失敗 (network attempt=%d): %s", attempt, e)
+                return (False, None, None)
+
+            if 200 <= resp.status_code < 300:
+                try:
+                    body = resp.json()
+                except ValueError:
+                    return (True, None, None)
+                if not isinstance(body, dict):
+                    return (True, None, None)
+                msg_id = body.get("id")
+                ch_id = body.get("channel_id")
+                msg = str(msg_id) if isinstance(msg_id, str | int) else None
+                ch = str(ch_id) if isinstance(ch_id, str | int) else None
+                return (True, msg, ch)
+
+            if resp.status_code == 429 and attempt < max_retries:
+                retry_after = _parse_retry_after(resp)
+                logger.info("Discord rate limited, %ss 待機して再試行", retry_after)
+                await asyncio.sleep(retry_after)
+                continue
+
+            logger.warning(
+                "Discord 送信失敗 status=%d body=%r",
+                resp.status_code,
+                resp.text[:200],
+            )
+            return (False, None, None)
+        return (False, None, None)
+    finally:
+        if own_client:
+            await used.aclose()
+
+
 def _parse_retry_after(resp: httpx.Response) -> float:
     """Retry-After ヘッダ or JSON ボディから待機秒を取得する."""
     header = resp.headers.get("retry-after")

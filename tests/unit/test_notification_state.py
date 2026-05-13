@@ -317,5 +317,5 @@ def test_v1_to_v3_migration_adds_table_and_columns(tmp_path: Path) -> None:
     assert "cluster_id" in cols
     # version も最新 (Phase 3 で v5) に更新されている
     row = conn.execute("SELECT version FROM schema_version").fetchone()
-    assert row["version"] == 5
+    assert row["version"] == 6
     conn.close()

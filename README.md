@@ -176,6 +176,30 @@ deferred again: v2 candidate datasets (`HuggingFaceH4/open_llm_leaderboard_v2`,
 `open-llm-leaderboard/contents-v2`) all return 401, suggesting deprecation /
 consolidation; HELM has no documented public raw data URL.
 
+## Discord reaction collector (Phase 4a)
+
+Phase 4a wires the Discord reactions feedback loop *infrastructure*:
+
+1. `scripts/notify_discord.py` now posts each item with `?wait=true` and stores
+   `discord_message_id` / `discord_channel_id` into `article_notifications`.
+2. A separate Bot user (env `AI_RADAR_DISCORD_BOT_TOKEN`) reads reactions via
+   `GET /channels/{cid}/messages/{mid}` on a 23:00 JST daily cron
+   (`scripts/collect_reactions.py`, `.github/workflows/collect-reactions.yml`).
+3. Aggregated `reactions(emoji, user_count, collected_at)` rows are stored in
+   the v6 `reactions` table for later scoring use.
+
+The scoring layer (`crawler/scoring.user_interest_for`) has the data path wired
+but **returns the default 1.0** until Phase 4.5, when a Beta posterior over
+`user_interest_for(slug)` is applied to `should_deliver`. Reaction data needs
+2–4 weeks of accumulation before the posterior is meaningful.
+
+The Bot token must have **Read Messages / View Channels** permission in the 7
+ai-radar channels. Webhooks alone cannot read reactions (write-only).
+
+> ⚠️ `?wait=true` makes Discord block until the message is delivered (~1–2s per
+> request) instead of fire-and-forget (~50ms). If `notify_discord.py` hits
+> timeouts during peak batches, raise `--rate-delay` (default 1.0s) accordingly.
+
 ## MCP server usage
 
 The local MCP server exposes 6 tools you can call from Claude Desktop / Claude Code:

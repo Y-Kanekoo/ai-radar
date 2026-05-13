@@ -1,9 +1,9 @@
-"""配信スコアリング (Phase 2).
+"""配信スコアリング (Phase 2 + 4a).
 
 スコアリング式:
     score = source_tier_score(tier)
           × time_decay(category, age_seconds)
-          × user_interest                # Phase 4 で学習、現状 1.0 固定
+          × user_interest                # Phase 4a で配線、現状 1.0 固定
           × (1 - HYPE_PENALTY if is_hype else 1.0)
 
 閾値 ``SCORE_THRESHOLD`` (0.5) 以上で Discord 配信を許可する.
@@ -16,12 +16,20 @@
 - DB に score 列を持たせない (時間で変動するため). 配信時にオンザフライ計算.
 - Tier 1-5 と category は既に DB に保存済み (sources テーブル v4) なので、
   Phase 4 でリアクション学習を導入するまでは静的な情報のみで計算できる.
+
+Phase 4a: ``user_interest_for(slug, conn)`` を配線するが、現時点は固定 1.0 を返す
+(リアクションデータがまだ蓄積されていないため). データが溜まり次第 Phase 4.5 で
+Bayesian posterior 等に差し替える前提.
 """
 
 from __future__ import annotations
 
+import logging
 import math
+import sqlite3
 import time
+
+logger = logging.getLogger("ai_radar.scoring")
 
 # 配信閾値. プラン §5.4 の値.
 SCORE_THRESHOLD = 0.5
@@ -52,6 +60,63 @@ _LAMBDA_BY_CATEGORY: dict[str, float] = {
     "podcast": 0.2,
 }
 _DEFAULT_LAMBDA = 0.3
+
+
+# Phase 4a: リアクション集計から user_interest を引く窓 (14 日).
+USER_INTEREST_WINDOW_SECONDS = 14 * 86400
+# Phase 4a の no-op フォールバック. Phase 4.5 で Beta posterior に置き換える前提.
+USER_INTEREST_DEFAULT = 1.0
+USER_INTEREST_MIN = 0.5
+USER_INTEREST_MAX = 2.0
+
+
+def user_interest_for(
+    source_slug: str,
+    conn: sqlite3.Connection | None = None,
+    *,
+    now: int | None = None,
+    window_seconds: int = USER_INTEREST_WINDOW_SECONDS,
+) -> float:
+    """source slug に対するユーザ興味係数を返す (Phase 4a no-op).
+
+    現状は ``USER_INTEREST_DEFAULT`` (1.0) 固定. リアクション集計テーブル
+    (Phase 4a で追加) のデータが揃ったら Phase 4.5 で Beta posterior に置き換える.
+
+    ``conn`` が ``None`` でも安全に動く (テスト用) ようにしておく.
+
+    Args:
+        source_slug: ソース slug. ``user_interest`` をスケーリングするキー.
+        conn: SQLite 接続. None なら default 値を返す.
+        now: 現在時刻 (unix 秒). テスト用. None なら ``time.time()``.
+        window_seconds: 集計窓 (秒). デフォルト 14 日.
+
+    Returns:
+        係数 (``USER_INTEREST_MIN`` 〜 ``USER_INTEREST_MAX`` の範囲). 現状常に 1.0.
+    """
+    if conn is None:
+        return USER_INTEREST_DEFAULT
+    current = int(time.time()) if now is None else now
+    since = current - window_seconds
+    try:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) AS c
+            FROM reactions r
+            JOIN articles a ON r.article_id = a.id
+            JOIN sources s ON a.source_id = s.id
+            WHERE s.slug = ? AND r.collected_at >= ?
+            """,
+            (source_slug, since),
+        ).fetchone()
+    except sqlite3.OperationalError as e:
+        # reactions テーブルがまだ無い (古い DB) の場合は default にフォールバック.
+        logger.debug("reactions テーブル無し source=%s err=%s", source_slug, e)
+        return USER_INTEREST_DEFAULT
+    if row is None or not row["c"]:
+        # 集計データなし -> default.
+        return USER_INTEREST_DEFAULT
+    # Phase 4a: count > 0 でも 1.0 を返す (no-op). Phase 4.5 で重み付けする.
+    return USER_INTEREST_DEFAULT
 
 
 def source_tier_score(tier: int) -> float:

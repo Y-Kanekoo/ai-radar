@@ -165,7 +165,7 @@ def test_v2_to_v3_migration_adds_columns(tmp_path: Path) -> None:
         assert "cluster_id" in cols_after
         # schema_version が最新 (Phase 3 で v5) になっている
         row = conn.execute("SELECT version FROM schema_version").fetchone()
-        assert row["version"] == 5
+        assert row["version"] == 6
     finally:
         conn.close()
 
@@ -225,7 +225,7 @@ def test_v3_to_v4_migration(tmp_path: Path) -> None:
         assert "is_hype" in a_cols
         assert "tier" in s_cols
         row = conn.execute("SELECT version FROM schema_version").fetchone()
-        assert row["version"] == 5
+        assert row["version"] == 6
     finally:
         conn.close()
 
@@ -245,7 +245,7 @@ def test_v2_to_v3_migration_is_idempotent(tmp_path: Path) -> None:
     try:
         row = conn2.execute("SELECT version FROM schema_version").fetchone()
         # 最新スキーマへ更新される (Phase 3 で v5)
-        assert row["version"] == 5
+        assert row["version"] == 6
     finally:
         conn2.close()
 
@@ -312,7 +312,7 @@ def test_v4_to_v5_migration(tmp_path: Path) -> None:
         names = {r["name"] for r in rows}
         assert "benchmark_snapshots" in names
         row = conn.execute("SELECT version FROM schema_version").fetchone()
-        assert row["version"] == 5
+        assert row["version"] == 6
     finally:
         conn.close()
 
@@ -340,5 +340,103 @@ def test_benchmark_snapshots_unique_constraint(tmp_path: Path) -> None:
             raise AssertionError("UNIQUE 制約が効いていない")
         except sqlite3.IntegrityError:
             pass
+    finally:
+        conn.close()
+
+
+# ---------------- Phase 4a: v6 マイグレーション ----------------
+
+
+def test_v6_reactions_table_in_fresh_db(tmp_path: Path) -> None:
+    """新規 DB は reactions テーブルと index 3 個を持つ."""
+    conn = init_db(tmp_path / "test.db")
+    try:
+        rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        names = {r["name"] for r in rows}
+        assert "reactions" in names
+
+        idx = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='reactions'"
+        ).fetchall()
+        idx_names = {r["name"] for r in idx}
+        assert "idx_reactions_article" in idx_names
+        assert "idx_reactions_message" in idx_names
+        assert "idx_reactions_emoji" in idx_names
+    finally:
+        conn.close()
+
+
+def test_v6_article_notifications_has_discord_columns(tmp_path: Path) -> None:
+    """v6 で article_notifications に discord_message_id / discord_channel_id."""
+    conn = init_db(tmp_path / "test.db")
+    try:
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(article_notifications)")}
+        assert "discord_message_id" in cols
+        assert "discord_channel_id" in cols
+    finally:
+        conn.close()
+
+
+def test_v5_to_v6_migration_adds_columns_and_table(tmp_path: Path) -> None:
+    """v5 既存 DB を v6 のコードで開くと列 + reactions テーブルが追加される."""
+    import sqlite3
+
+    db_path = tmp_path / "test.db"
+    raw = sqlite3.connect(db_path)
+    raw.executescript("""
+        CREATE TABLE sources (
+            id INTEGER PRIMARY KEY, slug TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
+            feed_url TEXT NOT NULL, site_url TEXT, language TEXT NOT NULL,
+            category TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+            last_fetched_at INTEGER, last_etag TEXT, last_modified TEXT,
+            consecutive_errors INTEGER DEFAULT 0,
+            tier INTEGER NOT NULL DEFAULT 3
+        );
+        CREATE TABLE articles (
+            id INTEGER PRIMARY KEY, guid TEXT NOT NULL,
+            source_id INTEGER NOT NULL REFERENCES sources(id),
+            url TEXT NOT NULL, title TEXT NOT NULL, snippet TEXT NOT NULL,
+            body_hash TEXT NOT NULL, body TEXT, author TEXT,
+            published_at INTEGER NOT NULL, fetched_at INTEGER NOT NULL,
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            normalized_url TEXT, thread_id INTEGER, cluster_id INTEGER,
+            is_hype INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(source_id, guid)
+        );
+        CREATE TABLE article_notifications (
+            id INTEGER PRIMARY KEY,
+            article_id INTEGER NOT NULL REFERENCES articles(id),
+            channel TEXT NOT NULL,
+            notified_at INTEGER NOT NULL,
+            UNIQUE(article_id, channel)
+        );
+        CREATE TABLE benchmark_snapshots (
+            id INTEGER PRIMARY KEY,
+            source_slug TEXT NOT NULL,
+            category TEXT NOT NULL,
+            captured_at INTEGER NOT NULL,
+            display_name TEXT NOT NULL,
+            entries_json TEXT NOT NULL,
+            notified INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(source_slug, captured_at)
+        );
+        CREATE TABLE schema_version (version INTEGER PRIMARY KEY);
+        INSERT INTO schema_version(version) VALUES (5);
+    """)
+    raw.commit()
+    raw.close()
+
+    conn = init_db(db_path)
+    try:
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(article_notifications)")}
+        assert "discord_message_id" in cols
+        assert "discord_channel_id" in cols
+
+        rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        names = {r["name"] for r in rows}
+        assert "reactions" in names
+
+        row = conn.execute("SELECT version FROM schema_version").fetchone()
+        assert row["version"] == 6
     finally:
         conn.close()

@@ -15,7 +15,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 # 履歴:
 #   v2 (Phase 4): article_notifications テーブルを追加
 #   v3 (Phase 1, ai-radar 0.2): articles に normalized_url / thread_id / cluster_id を追加
@@ -23,6 +23,9 @@ SCHEMA_VERSION = 5
 #   v4 (Phase 2, ai-radar 0.2): articles に is_hype, sources に tier を追加
 #   v5 (Phase 3, ai-radar 0.3): benchmark_snapshots テーブルを追加
 #                              (LMArena / MTEB / GitHub Trending の snapshot + diff)
+#   v6 (Phase 4a, ai-radar 0.3): article_notifications に
+#                                 discord_message_id / discord_channel_id を追加.
+#                                 reactions テーブルを新規追加 (Discord Bot 経由のリアクション集計用).
 
 _SCHEMA_SQL = """
 PRAGMA journal_mode = WAL;
@@ -114,15 +117,22 @@ CREATE TABLE IF NOT EXISTS crawl_runs (
 );
 
 -- v2 (Phase 4): 記事通知状態. channel ごとに既送信を追跡する.
+-- v6 (Phase 4a): discord_message_id / discord_channel_id を追加.
+--                webhook の ?wait=true 応答から取得した実 message_id を保存し、
+--                Bot API でリアクションを引くキーとして使う.
 CREATE TABLE IF NOT EXISTS article_notifications (
     id INTEGER PRIMARY KEY,
     article_id INTEGER NOT NULL REFERENCES articles(id),
     channel TEXT NOT NULL,
     notified_at INTEGER NOT NULL,
+    discord_message_id TEXT,
+    discord_channel_id TEXT,
     UNIQUE(article_id, channel)
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_channel ON article_notifications(channel);
 CREATE INDEX IF NOT EXISTS idx_notifications_article ON article_notifications(article_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_discord_msg
+    ON article_notifications(discord_message_id);
 
 -- v5 (Phase 3): ベンチマーク / Trending の snapshot.
 -- entries_json は ``[{"rank": int, "identifier": str, "score": float|None,
@@ -141,6 +151,23 @@ CREATE INDEX IF NOT EXISTS idx_bench_source_time
     ON benchmark_snapshots(source_slug, captured_at DESC);
 CREATE INDEX IF NOT EXISTS idx_bench_notified
     ON benchmark_snapshots(notified, captured_at DESC);
+
+-- v6 (Phase 4a): Discord Bot 経由のリアクション集計.
+-- collected_at は collector が走った時刻. user_count は Discord API から取得した
+-- 「現時点でその絵文字をつけたユーザー数」(含む Bot). 時系列で増減を追える.
+CREATE TABLE IF NOT EXISTS reactions (
+    id INTEGER PRIMARY KEY,
+    article_id INTEGER NOT NULL REFERENCES articles(id),
+    discord_message_id TEXT NOT NULL,
+    discord_channel_id TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    user_count INTEGER NOT NULL,
+    collected_at INTEGER NOT NULL,
+    UNIQUE(article_id, emoji, collected_at)
+);
+CREATE INDEX IF NOT EXISTS idx_reactions_article ON reactions(article_id);
+CREATE INDEX IF NOT EXISTS idx_reactions_message ON reactions(discord_message_id);
+CREATE INDEX IF NOT EXISTS idx_reactions_emoji ON reactions(emoji);
 """
 
 
@@ -213,6 +240,18 @@ def _premigrate_columns_if_needed(conn: sqlite3.Connection) -> None:
     if "tier" not in src_cols:
         conn.execute("ALTER TABLE sources ADD COLUMN tier INTEGER NOT NULL DEFAULT 3")
         altered = True
+    # v6 (Phase 4a): article_notifications に discord_message_id / discord_channel_id
+    n_row = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='article_notifications'"
+    ).fetchone()
+    if n_row is not None:
+        n_cols = {r["name"] for r in conn.execute("PRAGMA table_info(article_notifications)")}
+        if "discord_message_id" not in n_cols:
+            conn.execute("ALTER TABLE article_notifications ADD COLUMN discord_message_id TEXT")
+            altered = True
+        if "discord_channel_id" not in n_cols:
+            conn.execute("ALTER TABLE article_notifications ADD COLUMN discord_channel_id TEXT")
+            altered = True
     if altered:
         conn.commit()
 
@@ -251,3 +290,13 @@ def _migrate(conn: sqlite3.Connection, *, from_version: int) -> None:
         # v4 → v5 (Phase 3): benchmark_snapshots テーブル.
         # `_SCHEMA_SQL` の CREATE TABLE IF NOT EXISTS で既に作成済み. 何もしない.
         pass
+    if from_version < 6:
+        # v5 → v6 (Phase 4a): article_notifications に列追加 + reactions テーブル.
+        # 列追加は _premigrate でも実行されるが、念のため PRAGMA 確認.
+        n_cols = {row["name"] for row in conn.execute("PRAGMA table_info(article_notifications)")}
+        if "discord_message_id" not in n_cols:
+            conn.execute("ALTER TABLE article_notifications ADD COLUMN discord_message_id TEXT")
+        if "discord_channel_id" not in n_cols:
+            conn.execute("ALTER TABLE article_notifications ADD COLUMN discord_channel_id TEXT")
+        # reactions テーブルは _SCHEMA_SQL の CREATE TABLE IF NOT EXISTS で生成済み.
+        # index も同じく.

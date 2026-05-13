@@ -6,6 +6,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Phase 4a — Discord reactions collector + DB v6 (2026-05-13)
+
+#### Added
+
+- **DB スキーマ v6**: `article_notifications` に `discord_message_id` /
+  `discord_channel_id` カラムを追加 (`_premigrate_columns_if_needed` で ALTER).
+  `reactions` テーブル + index 2 個 (article_id, collected_at) を新設.
+  v5→v6 を `_migrate` で自動マイグレーション.
+- **`publisher/discord_bot.py`**: Discord Bot API クライアント
+  (`Bot {token}` 認証で `/channels/{cid}/messages/{mid}` を叩いて `reactions` を
+  取得). 429 は `Retry-After` で再試行、5xx は指数バックオフ、404/403 は再試行せず
+  None を返す. カスタム絵文字は `name:id` 形式に正規化.
+- **`publisher/reactions_store.py`**: `ReactionEntry` frozen dataclass + I/O 層.
+  `insert_reactions` (`INSERT OR IGNORE`), `aggregate_reactions_by_source`
+  (since_unix で時間窓フィルタ), `latest_collected_at`.
+- **`publisher/notification_state.py` 拡張**:
+  - `mark_notified_with_message_id`: 既存行を `ON CONFLICT UPDATE` で更新する
+    際、None 渡しでは既存値を保持する `COALESCE` 動作 (再送時に NULL で上書き
+    しない).
+  - `fetch_notifications_with_message_id`: `discord_message_id` が NULL の行は
+    返さず、reaction 収集対象だけを抽出.
+- **`publisher/discord.py` 拡張**: `send_notification_with_message_id` を追加.
+  webhook URL に `?wait=true` を付与して 200 レスポンスから `id` /
+  `channel_id` を回収.
+- **`scripts/collect_reactions.py`**: 過去 N 日 (既定 14 日) の通知済みメッセージ
+  に対し Bot API で reactions を取得して DB に保存する CLI.
+  `AI_RADAR_DISCORD_BOT_TOKEN` 未設定なら exit 0 でスキップ.
+- **`.github/workflows/collect-reactions.yml`**: 23:00 JST daily cron.
+  `workflow_dispatch` で `days` / `dry_run` 入力可能. concurrency group で多重実行
+  を防止.
+- **`crawler/scoring.py` 拡張**: `user_interest_for(slug, conn)` を追加.
+  **Phase 4a 時点は no-op で default 1.0 を返す** (DB 経路だけ確立). Phase 4.5 で
+  Beta posterior に置き換え予定.
+- **`scripts/notify_discord.py` 変更**: `send_batch` → per-item dispatch
+  (`_send_per_item_and_mark`) に切替. 成功した item のみ `message_id` を保存し、
+  失敗は mark せず次回 cron で再試行可能にする (重複送信防止と再送可能性を両立).
+
+#### Deferred (Phase 4.5 以降)
+
+- **Bayesian Beta posterior**: 反応データが 2〜4 週間貯まってから. 現状は配線のみ.
+- **A/B 配信実験**: 配信閾値の動的調整. ROC 比較用ロガーは未実装.
+- **動的 GitHub Trending キーワード**: ユーザー興味から AI キーワード集合を更新.
+
+#### Tests
+
+- 455 passed / 2 skipped (Phase 3.5 比 +37)、ruff format + check 緑化.
+  内訳: discord_bot 11 / reactions_store 8 / user_interest 5 /
+  notification_state_message_id 4 / publisher_discord_message_id 5 /
+  notify_discord_message_id 3 (orchestration) / db v6 migration 3.
+
 ### Phase 3.5 — BigCodeBench + AlpacaEval fetchers (2026-05-13)
 
 #### Added

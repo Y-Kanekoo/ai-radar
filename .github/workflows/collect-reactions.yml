@@ -1,0 +1,76 @@
+name: Collect Discord reactions (Phase 4a)
+
+# cron: 23:00 JST (UTC = 14:00) — crawl / benchmarks と被らない時間.
+# AI_RADAR_DISCORD_BOT_TOKEN 未設定なら collect_reactions.py が exit 0 で抜けるため、
+# secret 設定前でも安全に scheduling できる.
+on:
+  schedule:
+    - cron: "0 14 * * *"
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "過去何日分の通知を対象にするか"
+        type: string
+        default: "14"
+      dry_run:
+        description: "DB 保存せず log だけ出す"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # release upload
+  id-token: write
+
+concurrency:
+  group: "collect-reactions"
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    name: Fetch reactions via Discord Bot API
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Restore previous DB from Releases (if exists)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          uv run python scripts/publish_release.py \
+            --mode download \
+            --repo "${{ github.repository }}" \
+            --download-to data/articles.db || echo "No previous release; starting fresh"
+
+      - name: Collect reactions
+        env:
+          AI_RADAR_DISCORD_BOT_TOKEN: ${{ secrets.AI_RADAR_DISCORD_BOT_TOKEN }}
+        run: |
+          DAYS="${{ inputs.days || '14' }}"
+          ARGS="--days $DAYS"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          uv run python scripts/collect_reactions.py $ARGS
+
+      - name: Publish DB snapshot to GH Releases
+        if: ${{ inputs.dry_run != true }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          uv run python scripts/publish_release.py \
+            --mode full \
+            --repo "${{ github.repository }}" \
+            --retention-days 7

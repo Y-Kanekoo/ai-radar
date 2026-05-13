@@ -32,19 +32,23 @@ import os
 import sys
 from pathlib import Path
 
+import httpx
+
 from ai_radar.crawler.scoring import should_deliver
 from ai_radar.db import init_db
 from ai_radar.publisher.discord import (
     CATEGORY_ENV_PREFIX,
     DEFAULT_RATE_LIMIT_DELAY,
+    DEFAULT_TIMEOUT,
     FALLBACK_ENV,
     resolve_webhook,
-    send_batch,
+    send_notification_with_message_id,
 )
 from ai_radar.publisher.notification_state import (
     discord_channel_for_category,
     fetch_unnotified,
     mark_notified,
+    mark_notified_with_message_id,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -150,23 +154,61 @@ def _dispatch_category(
             log.info("[DRY %s] %s%s — %s", category, mark, t.item.title, t.item.url)
         return (0, 0, len(skipped))
 
-    items = [t.item for t in eligible]
-    hype_flags = [t.is_hype for t in eligible]
+    # Phase 4a: per-item で送信し ?wait=true の応答から message_id を取得して保存する.
+    # 失敗で打ち切らず、成功した item だけを (article_id, message_id) で mark する.
     success, failure = asyncio.run(
-        send_batch(
-            items,
+        _send_per_item_and_mark(
+            conn,
+            eligible,
             webhook_url,
-            rate_limit_delay=rate_delay,
-            hype_flags=hype_flags,
+            channel=channel,
+            rate_delay=rate_delay,
+            log=log,
         )
     )
     log.info("%s: 送信完了 success=%d failure=%d", category, success, failure)
-
-    # 成功した先頭から `success` 件を mark する
-    for t in eligible[:success]:
-        mark_notified(conn, t.article_id, channel=channel)
-
     return (success, failure, len(skipped))
+
+
+async def _send_per_item_and_mark(
+    conn,
+    eligible,
+    webhook_url,
+    *,
+    channel,
+    rate_delay,
+    log,
+) -> tuple[int, int]:
+    """1 件ずつ送って Discord 側 message_id を回収しつつ mark する."""
+    success = 0
+    failure = 0
+    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+        for i, t in enumerate(eligible):
+            if i > 0 and rate_delay > 0:
+                await asyncio.sleep(rate_delay)
+            ok, msg_id, ch_id = await send_notification_with_message_id(
+                t.item,
+                webhook_url,
+                is_hype=t.is_hype,
+                client=client,
+            )
+            if ok:
+                success += 1
+                if msg_id:
+                    mark_notified_with_message_id(
+                        conn,
+                        t.article_id,
+                        channel=channel,
+                        discord_message_id=msg_id,
+                        discord_channel_id=ch_id,
+                    )
+                else:
+                    # webhook が ?wait=true を尊重しなかった場合のフォールバック
+                    mark_notified(conn, t.article_id, channel=channel)
+            else:
+                failure += 1
+                log.debug("送信失敗 article_id=%d", t.article_id)
+    return (success, failure)
 
 
 def main(argv: list[str] | None = None) -> int:
