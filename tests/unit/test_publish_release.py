@@ -55,10 +55,10 @@ def test_create_data_release_with_repo() -> None:
 def test_list_data_releases_filters_by_prefix() -> None:
     releases_json = json.dumps(
         [
-            {"tagName": "v0.1.0", "createdAt": "2026-05-09T00:00:00Z"},
-            {"tagName": "data-2026-05-10T0600", "createdAt": "2026-05-10T06:00:00Z"},
-            {"tagName": "data-2026-05-10T1200", "createdAt": "2026-05-10T12:00:00Z"},
-            {"tagName": "v0.2.0", "createdAt": "2026-05-11T00:00:00Z"},
+            {"tagName": "v0.1.0", "publishedAt": "2026-05-09T00:00:00Z"},
+            {"tagName": "data-2026-05-10T0600", "publishedAt": "2026-05-10T06:00:00Z"},
+            {"tagName": "data-2026-05-10T1200", "publishedAt": "2026-05-10T12:00:00Z"},
+            {"tagName": "v0.2.0", "publishedAt": "2026-05-11T00:00:00Z"},
         ]
     )
     with patch("publish_release._gh") as mock_gh:
@@ -66,6 +66,7 @@ def test_list_data_releases_filters_by_prefix() -> None:
         result = publish_release.list_data_releases()
     assert len(result) == 2
     assert all(r["tagName"].startswith("data-") for r in result)
+    assert "tagName,publishedAt" in mock_gh.call_args.args
 
 
 # ---------------- cleanup_old_releases ----------------
@@ -77,8 +78,8 @@ def test_cleanup_keeps_recent_deletes_old() -> None:
     recent = (now - timedelta(days=2)).isoformat().replace("+00:00", "Z")
     releases_json = json.dumps(
         [
-            {"tagName": "data-old", "createdAt": old},
-            {"tagName": "data-recent", "createdAt": recent},
+            {"tagName": "data-old", "publishedAt": old},
+            {"tagName": "data-recent", "publishedAt": recent},
         ]
     )
     with patch("publish_release._gh") as mock_gh:
@@ -92,6 +93,32 @@ def test_cleanup_keeps_recent_deletes_old() -> None:
     # 削除されたのは data-old
     delete_call = mock_gh.call_args_list[1]
     assert "data-old" in delete_call.args
+
+
+def test_cleanup_keeps_just_published_release() -> None:
+    published_at = datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
+    releases_json = json.dumps(
+        [{"tagName": "data-just-published", "publishedAt": published_at}]
+    )
+    with patch("publish_release._gh") as mock_gh:
+        mock_gh.return_value = _fake_gh_returncode(stdout=releases_json)
+        deleted = publish_release.cleanup_old_releases(retention_days=7)
+    assert deleted == 0
+    mock_gh.assert_called_once()
+
+
+def test_cleanup_skips_releases_without_published_at() -> None:
+    releases_json = json.dumps(
+        [
+            {"tagName": "data-none", "publishedAt": None},
+            {"tagName": "data-missing"},
+        ]
+    )
+    with patch("publish_release._gh") as mock_gh:
+        mock_gh.return_value = _fake_gh_returncode(stdout=releases_json)
+        deleted = publish_release.cleanup_old_releases(retention_days=7)
+    assert deleted == 0
+    mock_gh.assert_called_once()
 
 
 def test_cleanup_handles_no_releases() -> None:
@@ -114,9 +141,9 @@ def test_download_latest_returns_none_when_no_releases() -> None:
 def test_download_latest_picks_newest_by_tag_name(tmp_path: Path) -> None:
     releases_json = json.dumps(
         [
-            {"tagName": "data-2026-05-09T0600", "createdAt": "2026-05-09T06:00:00Z"},
-            {"tagName": "data-2026-05-10T1200", "createdAt": "2026-05-10T12:00:00Z"},
-            {"tagName": "data-2026-05-10T0600", "createdAt": "2026-05-10T06:00:00Z"},
+            {"tagName": "data-2026-05-09T0600", "publishedAt": "2026-05-09T06:00:00Z"},
+            {"tagName": "data-2026-05-10T1200", "publishedAt": "2026-05-10T12:00:00Z"},
+            {"tagName": "data-2026-05-10T0600", "publishedAt": "2026-05-10T06:00:00Z"},
         ]
     )
     out = tmp_path / "articles.db"

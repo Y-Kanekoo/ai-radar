@@ -59,8 +59,8 @@ def create_data_release(db_path: Path, repo: str | None = None) -> str:
 
 
 def list_data_releases(repo: str | None = None) -> list[dict[str, str]]:
-    """data-* タグの release を tag/createdAt のリストで返す."""
-    args = ["release", "list", "--limit", "200", "--json", "tagName,createdAt"]
+    """data-* タグの release を tag/publishedAt のリストで返す."""
+    args = ["release", "list", "--limit", "200", "--json", "tagName,publishedAt"]
     if repo:
         args.extend(["--repo", repo])
     proc = _gh(*args, capture=True)
@@ -88,8 +88,11 @@ def cleanup_old_releases(
     releases = list_data_releases(repo=repo)
     deleted = 0
     for r in releases:
-        created = datetime.fromisoformat(r["createdAt"].replace("Z", "+00:00"))
-        if created < cutoff and delete_release(r["tagName"], repo=repo):
+        published_at = r.get("publishedAt")
+        if not published_at:
+            continue
+        published = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+        if published < cutoff and delete_release(r["tagName"], repo=repo):
             deleted += 1
     return deleted
 
