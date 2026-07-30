@@ -97,9 +97,7 @@ def test_cleanup_keeps_recent_deletes_old() -> None:
 
 def test_cleanup_keeps_just_published_release() -> None:
     published_at = datetime.now(tz=UTC).isoformat().replace("+00:00", "Z")
-    releases_json = json.dumps(
-        [{"tagName": "data-just-published", "publishedAt": published_at}]
-    )
+    releases_json = json.dumps([{"tagName": "data-just-published", "publishedAt": published_at}])
     with patch("publish_release._gh") as mock_gh:
         mock_gh.return_value = _fake_gh_returncode(stdout=releases_json)
         deleted = publish_release.cleanup_old_releases(retention_days=7)
