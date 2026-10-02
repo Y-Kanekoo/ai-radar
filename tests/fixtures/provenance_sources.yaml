@@ -1,0 +1,40 @@
+version: 1
+sources:
+  - slug: fixture-preprint
+    name: Synthetic preprint feed
+    feed_url: https://example.invalid/preprints
+    language: en
+    category: paper
+    tier: 2
+    enabled: false
+    provenance:
+      source_type: preprint_repository
+      publication_venue: null
+      review_status: unknown
+      popularity_signal: none
+  - slug: fixture-venue
+    name: Synthetic venue feed
+    feed_url: https://example.invalid/venue
+    language: en
+    category: paper
+    tier: 2
+    enabled: false
+    provenance:
+      source_type: proceedings
+      publication_venue: Example Conference 2026
+      review_status: peer_reviewed
+      review_evidence_url: https://example.invalid/review-policy
+      popularity_signal: none
+  - slug: hf-papers
+    name: Synthetic discovery feed
+    feed_url: https://example.invalid/papers
+    language: en
+    category: paper
+    tier: 1
+    enabled: false
+    fetch_kind: scraper
+    provenance:
+      source_type: research_aggregator
+      publication_venue: null
+      review_status: unknown
+      popularity_signal: community_upvotes

@@ -6,7 +6,8 @@
 扱うように `_extract_date_from_url` で補助する.
 
 upvote (`div.leading-none`) も拾うが、現状の ParsedItem には格納先がない. Phase 2 で
-スコアリング用の独立カラムを追加する想定. 今は body にメタとして残す.
+独立した人気指標として扱う想定. 今は body にメタとして残す。
+投票数は査読・正しさ・品質保証の証拠ではなく、現行スコアには使わない。
 """
 
 from __future__ import annotations

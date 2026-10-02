@@ -8,8 +8,14 @@
 #   language:   ja | en
 #   category:   release | paper | newsletter | tool | jp
 #               (qa-radar 由来の tool|blog|community|paper|note は廃止)
-#   tier:       1 (公式) | 2 (査読) | 3 (キュレーション) | 4 (個人) | 5 (SNS)
+#   tier:       既存配信優先度 (1〜5)。査読状態/品質保証とは独立。数値は維持。
 #               Phase 2 でスコアリング式 (source_tier × time_decay × user_interest) に使用
+#   provenance: 発見元の説明。記事に継承せず、スコアには使わない。
+#     source_type: preprint_repository | research_aggregator 等 (既定 unknown)
+#     publication_venue: 確認済み掲載先。不明は null (発見サイトとは別)
+#     review_status: unknown | not_peer_reviewed | peer_reviewed (既定 unknown)
+#     review_evidence_url: 査読の根拠URL。peer_reviewed は掲載先と根拠URLが必須
+#     popularity_signal: none | community_upvotes (品質/査読の証拠ではない)
 #   enabled:    クローラーが取り込むか
 #   fetch_policy:
 #     min_interval_seconds:   再取得の最小間隔（DDoS抑止）
@@ -76,6 +82,11 @@ sources:
     tier: 2
     enabled: true
     fetch_policy: { min_interval_seconds: 21600, max_items_per_fetch: 50 }
+    provenance:
+      source_type: preprint_repository
+      publication_venue: null
+      review_status: unknown
+      popularity_signal: none
     license_note: arxiv公式RSS、メタデータCC0
 
   # ============================================================
@@ -212,7 +223,12 @@ sources:
     enabled: true
     fetch_kind: scraper
     fetch_policy: { min_interval_seconds: 21600, max_items_per_fetch: 15 }
-    license_note: 公開 HTML、HF コミュニティ投票で品質保証、出所明示で集約可
+    provenance:
+      source_type: research_aggregator
+      publication_venue: null
+      review_status: unknown
+      popularity_signal: community_upvotes
+    license_note: 公開 HTML、出所明示で集約可
 
   - slug: cursor-blog
     name: Cursor Blog & Changelog

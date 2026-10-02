@@ -5,8 +5,9 @@ YAML を frozen dataclass にロードする層. クローラーや MCP から�
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -26,19 +27,63 @@ class FetchPolicy:
 
 
 @dataclass(frozen=True)
+class SourceProvenance:
+    """発見元の出所情報。記事単位の査読判定・品質保証ではない。
+
+    publication_venue は掲載先が確認できた場合だけ記録する。発見サイト名と
+    論文の掲載先は別物。peer_reviewed は掲載先と明示的な根拠URLを必要とするが、
+    URLの存在だけでは証拠の内容を検証できないため、設定者が根拠を確認する。
+    これらの値を個々の記事へ継承したり、配信スコアに利用したりしない。
+    """
+
+    source_type: str = "unknown"
+    publication_venue: str | None = None
+    review_status: str = "unknown"
+    review_evidence_url: str | None = None
+    popularity_signal: str = "none"
+
+    def __post_init__(self) -> None:
+        enums = {
+            "source_type": {
+                "unknown",
+                "blog",
+                "preprint_repository",
+                "research_aggregator",
+                "journal",
+                "proceedings",
+                "newsletter",
+            },
+            "review_status": {"unknown", "not_peer_reviewed", "peer_reviewed"},
+            "popularity_signal": {"none", "community_upvotes"},
+        }
+        for name, allowed in enums.items():
+            value = getattr(self, name)
+            if not isinstance(value, str) or value not in allowed:
+                raise ValueError(f"provenance.{name}: 不正な値 {value!r}")
+        for name in ("publication_venue", "review_evidence_url"):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f"provenance.{name}: 空でない文字列または null が必要")
+        if self.review_evidence_url is not None:
+            url = urlsplit(self.review_evidence_url)
+            if url.scheme not in {"http", "https"} or not url.hostname:
+                raise ValueError("provenance.review_evidence_url: HTTP(S) URL が必要")
+        if self.review_status == "peer_reviewed" and (
+            self.publication_venue is None or self.review_evidence_url is None
+        ):
+            raise ValueError("provenance: peer_reviewed には掲載先と査読根拠URLが必要")
+
+
+@dataclass(frozen=True)
 class SourceConfig:
     """1ソースの定義 (sources.yaml の1エントリ).
 
     fetch_kind="rss" (デフォルト) は feedparser 経路、"scraper" は
     `crawler.scrapers` に登録された per-source HTML parser を使う.
 
-    tier (Phase 2): 信頼度ティア 1-5.
-        1 = 公式 (anthropic.com / arxiv.org 等)
-        2 = 査読系 (The Information / MIT TR 等)
-        3 = キュレーション (TLDR / Ben's Bites 等)
-        4 = 個人 (Substack / Medium / HN 等)
-        5 = SNS拡散・まとめ・自動翻訳
-        Discord 配信スコアの第1因子. yaml 未指定なら 3.
+    tier (Phase 2): 既存配信優先度 1-5。査読・正しさ・品質の証拠ではない。
+        Discord 配信スコアの第1因子。yaml 未指定なら 3。
+    provenance: 発見元の説明。DB/記事へ暗黙継承せず、スコアと独立。
     """
 
     slug: str
@@ -52,8 +97,9 @@ class SourceConfig:
     license_note: str
     # Phase 0.5: scraper サポート. 旧 yaml との後方互換のためデフォルト "rss"
     fetch_kind: str = "rss"
-    # Phase 2: 信頼度ティア (1=公式, 5=SNS). yaml 未指定なら 3.
+    # Phase 2: 既存配信優先度。数値/既定値は維持し、査読とは分離。
     tier: int = 3
+    provenance: SourceProvenance = field(default_factory=SourceProvenance)
 
 
 @dataclass(frozen=True)
@@ -89,6 +135,13 @@ def load_sources(path: Path = DEFAULT_SOURCES_PATH) -> list[SourceConfig]:
         tier = int(entry.get("tier", 3))
         if not 1 <= tier <= 5:
             raise ValueError(f"{entry.get('slug')!r}: 不正な tier {tier!r} (1〜5 のいずれか)")
+        provenance_data = entry.get("provenance", {})
+        if not isinstance(provenance_data, dict):
+            raise ValueError(f"{entry.get('slug')!r}: provenance は mapping が必要")
+        try:
+            provenance = SourceProvenance(**provenance_data)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{entry.get('slug')!r}: provenance: {exc}") from exc
         sources.append(
             SourceConfig(
                 slug=entry["slug"],
@@ -105,6 +158,7 @@ def load_sources(path: Path = DEFAULT_SOURCES_PATH) -> list[SourceConfig]:
                 license_note=entry.get("license_note", ""),
                 fetch_kind=fetch_kind,
                 tier=tier,
+                provenance=provenance,
             )
         )
     return sources
