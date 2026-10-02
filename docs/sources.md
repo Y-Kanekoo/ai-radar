@@ -2,6 +2,68 @@
 
 > 最終更新: 2026-05-09 / 全URLは WebFetch で200応答を実物確認済み
 
+## TDR-001: 発見元・掲載先・査読状態・人気を分離する
+
+- 日付: 2026-10-02
+- 状態: 提案（実装・オフライン検証済み、マージ前レビュー待ち）
+- 対象: `config/sources.yaml` と `SourceConfig` の出所情報
+
+### 背景と決定
+
+従来の Tier 2 の説明「査読」は arXiv と Kimi の登録実態と一致せず、
+HF Papers の「コミュニティ投票で品質保証」も人気と品質を混同していた。
+`tier` は既存の配信優先度として数値・スコア式を維持し、査読ラベルに使わない。
+arXiv の掲載だけでは各論文の査読有無を判断できず、HF の投票も査読の証拠ではない。
+
+任意の `provenance` mapping を追加する（旧 YAML と既存呼び出しは互換）。
+
+| フィールド | 意味・既定値 |
+|---|---|
+| `source_type` | 発見元の種別。`unknown`（既定）/ `blog` / `preprint_repository` / `research_aggregator` / `journal` / `proceedings` / `newsletter` |
+| `publication_venue` | 確認済み掲載先。不明は `null`。発見用サイト名では代用しない |
+| `review_status` | `unknown`（既定）/ `not_peer_reviewed` / `peer_reviewed` |
+| `review_evidence_url` | 根拠の HTTP(S) URL。不明は `null` |
+| `popularity_signal` | `none`（既定）/ `community_upvotes`。品質証拠ではない |
+
+`peer_reviewed` は掲載先と明示的な根拠URLがなければ拒否する。掲載先名・
+記事タイトル・source type・Tier・投票数だけで昇格させない。
+URL検証は形式のみで、内容の真偽や適用範囲の確認は設定者が行う。
+不明値・不正な型・未知のキーは拒否し、誤記を黙って無視しない。
+
+現在の arXiv は `preprint_repository`、HF Papers は `research_aggregator` とし、
+双方の掲載先は `null`、査読状態は `unknown`。HF の人気指標だけを
+`community_upvotes` と明示する。他のソースは未確認を表す既定値とする。
+
+### 境界と互換性
+
+これは**発見元について確認した情報**であり、個々の記事の査読判定ではない。
+たとえば査読方針のある会議にも序文があり得る。ソースの査読状態や掲載先を
+記事に暗黙継承しない。SQLite、MCP、RSS、Pages の記事スキーマを変更せず、
+記事単位の査読済みバッジは生成しない。記事ごとの証拠保存・照合は将来の別設計とする。
+
+ソースの追加/削除、有効状態、URL、カテゴリ、取得頻度、Tier とスコア式、
+通知先、依存関係、権限は変更しない。HF parser の `body` 内の投票メタデータも
+互換維持し、スコアには加えない。`version: 1` は任意フィールドの後方互換拡張で維持。
+
+### 機能別の検証
+
+- Unit: preprint / 確認済み掲載先 / 根拠不足 / 型・空値・誤記 / 人気と査読の分離 / 旧設定互換 / 既存重み
+- Offline integration: 合成HTML（0・1・999999票）→ parser → 一時DB、合成会議feedの序文に査読情報を継承しない
+- CLI: `scripts/run_crawl.py` の設定ロードと不正設定拒否。合成disabledソースのみ、socket接続禁止、一時DBのみ
+
+```bash
+uv run pytest tests/unit/test_source_provenance.py
+uv run pytest tests/offline_integration/test_source_provenance_offline.py
+uv run pytest tests/cli/test_source_provenance_cli.py
+```
+
+実サイト通信・通知送信・有料API・記事品質の検証を行うテストではない。
+`tests/integration/` は既存の opt-in 実通信用なので、常時実行する合成テストとは分離した。
+
+この文書の下部に残る旧QAソース一覧と英日README全体の同期は別作業。
+[既存 Issue #6](https://github.com/Y-Kanekoo/ai-radar/issues/6) のドキュメント同期範囲として追跡し、
+今回の出所ラベル修正で現行ソース全体を再分類したとは扱わない。
+
 ## 法的フレームワーク
 
 本プロジェクトは日本国著作権法 **第47条の5（情報所在検索サービスの軽微利用）**

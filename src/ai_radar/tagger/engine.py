@@ -162,7 +162,7 @@ def detect_hype(
     """記事がハイプ表現を含むかを判定する (Phase 2).
 
     Tier 4-5 のソースで `hype_keywords` のいずれかが title/body にヒットすれば True.
-    公式や査読系 (Tier 1-3) は普通に "breakthrough" 等を使うため、適用しない.
+    既存ルールとして Tier 1-3 には適用しない。Tier は査読・品質の証拠ではない。
 
     Args:
         title: 記事タイトル.

@@ -126,7 +126,7 @@ def test_official_sources_are_tier1() -> None:
 
 
 def test_arxiv_is_tier2() -> None:
-    """arxiv は査読系で Tier 2."""
+    """arxiv の既存配信優先度は Tier 2。査読状態とは独立。"""
     by_slug = {s.slug: s for s in load_sources()}
     assert by_slug["arxiv-cs-lg"].tier == 2
 

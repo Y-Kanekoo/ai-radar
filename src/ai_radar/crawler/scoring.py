@@ -37,10 +37,10 @@ SCORE_THRESHOLD = 0.5
 # ハイプ警告フラグが立っているときのスコア減衰率 (0.5 = 半減).
 HYPE_PENALTY = 0.5
 
-# Tier 1-5 のスコアマップ. プラン §5.1 の値.
+# Tier 1-5 の既存配信重み。査読/品質/人気の証拠とは独立。数値は変更しない。
 _TIER_SCORE: dict[int, float] = {
     1: 1.0,  # 公式
-    2: 0.8,  # 査読系
+    2: 0.8,  # 既存 Tier 2 (arXiv等を含む。査読を意味しない)
     3: 0.7,  # キュレーション
     4: 0.5,  # 個人ブログ
     5: 0.3,  # SNS拡散
@@ -148,7 +148,7 @@ def compute_score(
     """配信スコアを計算する.
 
     Args:
-        tier: ソースの信頼度 (1-5).
+        tier: ソースの配信優先度 (1-5).
         category: ソース category (release / paper / ...).
         age_seconds: 公開からの経過秒数. ``int(time.time() - published_at)``.
         is_hype: Tier 4-5 でハイプ警告フラグが立っているか.
@@ -178,7 +178,7 @@ def should_deliver(
     ``published_at`` から現在までの経過時間でスコアを計算し、``threshold`` と比較する.
 
     Args:
-        tier: ソース信頼度.
+        tier: ソース配信優先度.
         category: ソース category.
         published_at: 記事公開時刻 (unix 秒).
         is_hype: ハイプフラグ.
