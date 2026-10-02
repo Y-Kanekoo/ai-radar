@@ -6,6 +6,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Source provenance labels (2026-10-02)
+
+#### Fixed
+
+- arXiv の掲載を査読、HF Papers の投票数を品質保証と扱う説明を修正.
+  任意の出所メタデータで発見元・確認済み掲載先・査読根拠・人気指標を区別する.
+  査読済みの設定には掲載先と根拠 URL を必須とし、記事には暗黙継承しない.
+- 既存 20 ソースの構成、Tier 数値・スコア式、通知設定、記事・DB・出力スキーマは維持.
+
 ### Phase 4a — Discord reactions collector + DB v6 (2026-05-13)
 
 #### Added
