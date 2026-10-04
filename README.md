@@ -191,8 +191,8 @@ The diff bucket is one of: 🆕 new rank-in, 📈 rank up (≥2 positions), 📉
 (≥2 positions), ❌ dropped. The CLI is:
 
 ```bash
-uv run python scripts/track_benchmarks.py            # all registered fetchers
-uv run python scripts/track_benchmarks.py --source lmarena_text --dry-run
+uv run --locked python scripts/track_benchmarks.py            # all registered fetchers
+uv run --locked python scripts/track_benchmarks.py --source lmarena_text --dry-run
 ```
 
 `Open LLM Leaderboard v2` and `HELM lite` were investigated in Phase 3.5 but
@@ -258,12 +258,12 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 ```bash
 git clone https://github.com/Y-Kanekoo/ai-radar.git
 cd ai-radar
-uv sync --dev
-uv run pytest -v
-uv run ruff check .
+uv sync --locked --dev
+uv run --locked pytest -v
+uv run --locked ruff check .
 
 # Start the MCP server locally for manual testing
-uv run python -m ai_radar
+uv run --locked python -m ai_radar
 ```
 
 ## Subscription-only policy
@@ -276,3 +276,14 @@ compatibility with qa-radar's `summarize_article` MCP tool.
 ## License
 
 MIT — see [LICENSE](LICENSE). For data handling guidelines, see [NOTICE](NOTICE).
+
+### Dependency reproducibility
+
+Project dependencies are installed from the committed `uv.lock`; workflows
+reject manifest/lock drift before executing project commands. See
+[dependency update policy](CONTRIBUTING.md#dependency-updates) for the tested
+uv version and update process. Python minor versions remain 3.11/3.12 in CI.
+The PyPI workflow checks lock freshness before building, but its isolated build
+backend and the extra `--with twine` environment are outside the project lock's
+reproducibility guarantee. This change does not upgrade dependencies or Python,
+change notification schedules, or validate real provider credentials/delivery.

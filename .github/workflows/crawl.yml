@@ -39,20 +39,28 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
+          version: "0.12.19"
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
 
       - name: Set up Python 3.11
         run: uv python install 3.11
 
       - name: Sync dependencies
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
+
+      - name: Record tool versions
+        run: |
+          uv --version
+          uv run --locked python --version
 
       - name: Restore previous DB from Releases (if exists)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          uv run python scripts/publish_release.py \
+          uv run --locked python scripts/publish_release.py \
             --mode download \
             --repo "${{ github.repository }}" \
             --download-to data/articles.db || echo "No previous release; starting fresh"
@@ -60,7 +68,7 @@ jobs:
       - name: Crawl + tag (自動でタグ付け)
         id: crawl
         run: |
-          uv run python scripts/run_crawl.py --concurrency 5 2>&1 | tee /tmp/crawl.log
+          uv run --locked python scripts/run_crawl.py --concurrency 5 2>&1 | tee /tmp/crawl.log
           ADDED=$(grep -oE "追加=[0-9]+" /tmp/crawl.log | tail -1 | cut -d= -f2 || echo 0)
           echo "added=${ADDED:-0}" >> "$GITHUB_OUTPUT"
           echo "::notice title=Crawl complete::Added ${ADDED:-0} articles"
@@ -80,16 +88,16 @@ jobs:
           AI_RADAR_DISCORD_WEBHOOK_TREND: ${{ secrets.AI_RADAR_DISCORD_WEBHOOK_TREND }}
           AI_RADAR_DISCORD_WEBHOOK_PODCAST: ${{ secrets.AI_RADAR_DISCORD_WEBHOOK_PODCAST }}
         run: |
-          uv run python scripts/notify_discord.py --limit 20
+          uv run --locked python scripts/notify_discord.py --limit 20
 
       - name: Build pages
-        run: uv run python scripts/build_pages.py
+        run: uv run --locked python scripts/build_pages.py
 
       - name: Publish DB snapshot to GH Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          uv run python scripts/publish_release.py \
+          uv run --locked python scripts/publish_release.py \
             --mode full \
             --repo "${{ github.repository }}" \
             --retention-days 7

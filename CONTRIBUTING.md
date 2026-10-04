@@ -28,10 +28,10 @@ If you are a content author or publisher and would like content excluded:
 ```bash
 git clone https://github.com/Y-Kanekoo/ai-radar.git
 cd ai-radar
-uv sync --all-extras --dev
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
+uv sync --locked --all-extras --dev
+uv run --locked pytest
+uv run --locked ruff check .
+uv run --locked ruff format --check .
 ```
 
 ## Branch policy
@@ -49,3 +49,30 @@ uv run ruff format --check .
 - Type hints required for public functions; no `Any` allowed
 - ruff (E, F, I, B, UP, N, SIM, RUF) must pass with line length 100
 - pytest coverage target: ≥80%
+
+## Dependency updates
+
+`uv.lock` is the canonical project dependency graph. Use uv 0.12.19 (the
+workflow version) and the existing Python 3.11/3.12 CI matrix. Workflows record
+actual uv and Python versions; Python patch versions are not pinned.
+
+Normal development and CI use `uv sync --locked` and `uv run --locked`:
+manifest/lock mismatch, a missing lock, or an invalid lock must stop execution.
+`--frozen` skips freshness validation and is not a substitute for this gate.
+For an intentional dependency change, update the manifest if needed, run
+`uv lock --upgrade-package <name>`, and review and commit the resulting lock.
+Avoid blanket upgrades in unrelated changes. Cache keys include both files;
+a restored cache never replaces lock validation.
+
+Dependabot uses the native `uv` ecosystem to update the lock weekly. Review
+normal updates individually, handle major upgrades in separate PRs, and
+prioritize security fixes. Merge only after CI and review; no automatic merge
+or new publishing permissions are introduced. Dependency updates do not promise
+compatibility merely because a newer version exists. The current lock was also
+read successfully with uv 0.11.0, matching GitHub's documented supported uv
+series; this does not prove that a future hosted Dependabot PR will succeed.
+Confirm the first generated PR and its manifest/lock diff operationally.
+
+References: [uv Dependabot integration](https://docs.astral.sh/uv/guides/integration/dependabot/),
+[lock freshness semantics](https://docs.astral.sh/uv/concepts/projects/sync/), and
+[GitHub supported ecosystems](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories).

@@ -26,8 +26,11 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
+          version: "0.12.19"
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
 
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
@@ -36,16 +39,21 @@ jobs:
         run: echo "${{ matrix.python-version }}" > .python-version
 
       - name: Sync dependencies
-        run: uv sync --all-extras --dev
+        run: uv sync --locked --all-extras --dev
+
+      - name: Record tool versions
+        run: |
+          uv --version
+          uv run --locked python --version
 
       - name: Lint (ruff check)
-        run: uv run ruff check .
+        run: uv run --locked ruff check .
 
       - name: Format check (ruff format --check)
-        run: uv run ruff format --check .
+        run: uv run --locked ruff format --check .
 
       - name: Test (pytest)
-        run: uv run pytest -v --cov=ai_radar --cov-report=term-missing
+        run: uv run --locked pytest -v --cov=ai_radar --cov-report=term-missing
 
       - name: Coverage threshold (>=80%)
-        run: uv run coverage report --fail-under=80
+        run: uv run --locked coverage report --fail-under=80
