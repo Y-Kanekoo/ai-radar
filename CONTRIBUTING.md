@@ -90,17 +90,45 @@ and downloaded archive on 2026-10-04. Other platforms require separately
 verified checksums. Workflow policy tests reject an absent/changed checksum,
 a mutable action tag, or an incompatible runner.
 
-The action validates the archive before extraction on a cold download, but
-bypasses that path when its installer tool-cache already contains uv. Therefore
-only the setup step receives a fresh runner-temporary `RUNNER_TOOL_CACHE`.
-This installer cache is separate from the restored **project dependency cache**.
-The package lock and Python minor versions are unchanged. The action's
-[checksum implementation](https://github.com/astral-sh/setup-uv/blob/c18668ad3cf93ea998bef934396af7bb5c839dc7/src/download/checksum/checksum.ts)
+The action validates downloads before extraction, but a warm tool-cache hit
+bypasses its checksum path. GitHub's [Node action handler](https://github.com/actions/runner/blob/v2.337.0/src/Runner.Worker/Handlers/NodeScriptActionHandler.cs)
+sets reserved runner variables from runtime context: the previous step-level
+`RUNNER_TOOL_CACHE` override did **not** isolate that cache. PR #18's first cold
+run is download evidence only; it did not prove warm-cache integrity.
+
+Every setup is now bracketed by `scripts/verify_uv_tool_cache.py`, invoked with
+standard Python and the actual `runner.tool_cache` context. Before setup, a
+completely absent target is allowed; existing `uv` and `uvx` must match these
+SHA-256 values derived from the verified official archive:
+
+- `uv`: `242e462a63f5a3c0421d68557006193ecbfb61321cba0fe8542213ac62d92563`
+- `uvx`: `34a435129d938dca2f22300764aca33e69e038485ee3e27ab62d321fc71e0a6c`
+
+Partial entries, executable/parent/marker symlinks, and modified binaries fail
+before setup. The guard never executes, removes or repairs cached binaries.
+After setup, both binaries must exist and match; action output paths and PATH
+resolution must identify those same verified binaries. Explicit Python inputs
+and `activate-environment: false` avoid uv execution within setup before this
+second guard. The pinned vendor has `post-if: success()`, so a failed guard
+also prevents post-save/pruning. This protects this workflow's execution order;
+it does not defend against a concurrent process with the same permissions
+changing files after verification. No reserved environment override is used.
+
+`tests/installer/check_warm_cache.py` runs in hosted CI after verification. It
+copies real verified binaries into temporary, populated caches with completion
+markers, then exercises correct, modified uv/uvx, missing and symlink cases via
+the guard CLI. Modified scripts would leave a sentinel if executed; rejection
+must leave it absent. The actual runner tool-cache is only read and remains
+unchanged. Offline unit tests also cover missing entries, parent/marker links,
+and action-output/PATH mismatch. The former test requiring the ineffective
+reserved-variable override was replaced by guard-order and override-rejection
+contracts; retaining that assertion would preserve the reported bug.
+
+The vendor [checksum implementation](https://github.com/astral-sh/setup-uv/blob/c18668ad3cf93ea998bef934396af7bb5c839dc7/src/download/checksum/checksum.ts)
 and [download order](https://github.com/astral-sh/setup-uv/blob/c18668ad3cf93ea998bef934396af7bb5c839dc7/src/download/download-version.ts)
-were verified with its shipped Node bundle, an isolated loopback fixture and
-no token: correct archive accepted; wrong checksum, missing manifest checksum,
-and modified archive rejected before tool registration. This local experiment
-does not establish hosted cache availability.
+were separately exercised with the shipped Node bundle and loopback fixtures:
+correct archive accepted; wrong/missing checksum and altered archive rejected.
+That direct-process experiment is not a simulation of GitHub's Node handler.
 
 CI records the producer's `cache-hit` and primary `cache-key` without skipping
 locked sync on a miss. Its stable, Python-specific suffix permits reuse across
@@ -111,9 +139,14 @@ an absent `.venv`. Python installation itself is outside that offline command.
 The consumer does not save caches. Scheduled/publishing workflows retain cache
 pruning and their existing triggers, permissions and notification behavior.
 
-For acceptance, inspect **both** jobs' logs at the published revision: record an
-initial miss, successful post-save, matching producer/consumer primary keys,
-a consumer hit and offline sync. A producer's cold-install success, or a generic
+Cache acceptance is distinct from installer acceptance. PR #18 run
+`37210130791` already demonstrated producer miss → save → exact-key hit →
+offline sync for both Python versions. Preserve that evidence at its revision.
+For a later revision/retry, record whether the producer is warm or cold, compare
+producer/consumer primary keys, and require consumer hit plus offline sync.
+A stable key may correctly restore an earlier run; do not call that a new cold
+round trip. Testing an additional cold cycle would require a separately scoped
+fixture key and independent evidence, not disabling normal cache reuse. A producer's cold-install success, or a generic
 "cache saved" message alongside an HTTP error, is not restoration proof.
 If the cache service is unavailable, normal producer checks still run, while
 the consumer gate fails; report that failure rather than claiming Issue #17

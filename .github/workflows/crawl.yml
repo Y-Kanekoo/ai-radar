@@ -36,12 +36,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Verify existing uv tool cache before setup
         env:
-          RUNNER_TOOL_CACHE: ${{ runner.temp }}/verified-uv-tool-cache
+          UV_INSTALLER_TOOL_CACHE: ${{ runner.tool_cache }}
+        run: python3 scripts/verify_uv_tool_cache.py --tool-cache "$UV_INSTALLER_TOOL_CACHE" --allow-missing
+
+      - name: Install uv
+        id: uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           version: "0.12.19"
+          activate-environment: false
           checksum: "23bf5552d220e0842b65c862097b2ebaeba0064b74eda5e565e77fd25969d8c8"
           python-version: "3.11"
           prune-cache: true
@@ -49,6 +54,15 @@ jobs:
           cache-dependency-glob: |
             pyproject.toml
             uv.lock
+
+      - name: Verify installed uv tool cache before execution
+        env:
+          UV_INSTALLER_TOOL_CACHE: ${{ runner.tool_cache }}
+          SELECTED_UV: ${{ steps.uv.outputs.uv-path }}
+          SELECTED_UVX: ${{ steps.uv.outputs.uvx-path }}
+        run: >-
+          python3 scripts/verify_uv_tool_cache.py --tool-cache "$UV_INSTALLER_TOOL_CACHE"
+          --check-selected --selected-uv "$SELECTED_UV" --selected-uvx "$SELECTED_UVX"
 
       - name: Set up Python 3.11
         run: uv python install 3.11

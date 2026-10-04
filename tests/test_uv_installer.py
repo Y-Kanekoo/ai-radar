@@ -16,7 +16,7 @@ def check_installer(job: dict, step: dict) -> None:
     assert step["uses"] == ACTION, "review the immutable official release"
     assert step["with"]["version"] == "0.12.19"
     assert step["with"]["checksum"] == CHECKSUM, "official artifact checksum is mandatory"
-    assert step["env"]["RUNNER_TOOL_CACHE"] == "${{ runner.temp }}/verified-uv-tool-cache"
+    assert "RUNNER_TOOL_CACHE" not in step.get("env", {}), "runner reserved env is not a control"
     assert step["with"]["python-version"] in {"3.11", "${{ matrix.python-version }}"}
     assert "manifest-file" not in step["with"]
 
@@ -46,7 +46,7 @@ def test_installer_policy_rejects_incompatible_configuration(change: str) -> Non
     elif change == "tag":
         step["uses"] = "astral-sh/setup-uv@v10"
     elif change == "tool-cache":
-        del step["env"]["RUNNER_TOOL_CACHE"]
+        step["env"] = {"RUNNER_TOOL_CACHE": "/tmp/ineffective-override"}
     else:
         job["runs-on"] = "ubuntu-24.04-arm"
     with pytest.raises((AssertionError, KeyError)):
@@ -76,3 +76,28 @@ def test_cache_consumer_isolated_and_requires_producer() -> None:
     assert "test ! -d .venv" in commands
     assert "uv sync --locked --offline --all-extras --dev" in commands
     assert workflow["permissions"] == {"contents": "read"}
+
+
+def test_cache_guard_runs_before_and_after_every_setup() -> None:
+    for path in (ROOT / ".github/workflows").glob("*.yml"):
+        workflow = yaml.safe_load(path.read_text())
+        for job in workflow["jobs"].values():
+            steps = job.get("steps", [])
+            for index, step in enumerate(steps):
+                if not step.get("uses", "").startswith("astral-sh/setup-uv@"):
+                    continue
+                before, after = steps[index - 1], steps[index + 1]
+                for guard in [before, after]:
+                    assert guard["env"]["UV_INSTALLER_TOOL_CACHE"] == "${{ runner.tool_cache }}"
+                    assert "python3 scripts/verify_uv_tool_cache.py" in guard["run"]
+                    assert '"$UV_INSTALLER_TOOL_CACHE"' in guard["run"]
+                    assert "if" not in guard and "continue-on-error" not in guard
+                assert "--allow-missing" in before["run"]
+                assert "--allow-missing" not in after["run"]
+                assert "--check-selected" in after["run"]
+                assert after["env"]["SELECTED_UV"] == "${{ steps.uv.outputs.uv-path }}"
+                assert after["env"]["SELECTED_UVX"] == "${{ steps.uv.outputs.uvx-path }}"
+                assert step["with"]["activate-environment"] is False
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
+    steps = ci["jobs"]["lint-and-test"]["steps"]
+    assert any("python3 tests/installer/check_warm_cache.py" in s.get("run", "") for s in steps)
