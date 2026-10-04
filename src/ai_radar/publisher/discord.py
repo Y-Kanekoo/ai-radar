@@ -137,8 +137,8 @@ async def send_notification(
         for attempt in range(max_retries + 1):
             try:
                 resp = await used.post(webhook_url, json=payload)
-            except httpx.HTTPError as e:
-                logger.warning("Discord 送信失敗 (network attempt=%d): %s", attempt, e)
+            except (httpx.HTTPError, httpx.InvalidURL):
+                logger.warning("Discord 送信失敗 (network attempt=%d)", attempt)
                 return False
 
             if 200 <= resp.status_code < 300:
@@ -152,9 +152,8 @@ async def send_notification(
                 continue
 
             logger.warning(
-                "Discord 送信失敗 status=%d body=%r",
+                "Discord 送信失敗 status=%d",
                 resp.status_code,
-                resp.text[:200],
             )
             return False
         return False
@@ -188,8 +187,8 @@ async def send_notification_with_message_id(
         for attempt in range(max_retries + 1):
             try:
                 resp = await used.post(url, json=payload)
-            except httpx.HTTPError as e:
-                logger.warning("Discord 送信失敗 (network attempt=%d): %s", attempt, e)
+            except (httpx.HTTPError, httpx.InvalidURL):
+                logger.warning("Discord 送信失敗 (network attempt=%d)", attempt)
                 return (False, None, None)
 
             if 200 <= resp.status_code < 300:
@@ -212,9 +211,8 @@ async def send_notification_with_message_id(
                 continue
 
             logger.warning(
-                "Discord 送信失敗 status=%d body=%r",
+                "Discord 送信失敗 status=%d",
                 resp.status_code,
-                resp.text[:200],
             )
             return (False, None, None)
         return (False, None, None)

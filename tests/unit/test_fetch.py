@@ -92,12 +92,24 @@ async def test_handles_network_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_creates_own_client_when_none() -> None:
-    """client=None でも動作する (関数内で生成・破棄)."""
-    # 実ネットワークを叩かないため、httpx の AsyncClient は呼ばれるが
-    # invalid host で即座に ConnectError → error フィールドに格納される.
-    r = await fetch_feed("http://0.0.0.0:1/feed", timeout=2.0)
+async def test_creates_own_client_when_none(monkeypatch) -> None:
+    """内部 client の生成・例外変換・close を socket 通信なしで確認する."""
+    original = httpx.AsyncClient
+    clients = []
+
+    def handler(request):
+        raise httpx.ConnectError("stub connection failure", request=request)
+
+    def factory(**kwargs):
+        client = original(transport=httpx.MockTransport(handler), **kwargs)
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(httpx, "AsyncClient", factory)
+    r = await fetch_feed("https://example.invalid/feed", timeout=2.0)
     assert r.error is not None
+    assert len(clients) == 1
+    assert clients[0].is_closed
 
 
 # ---------------- RobotsCache ----------------
