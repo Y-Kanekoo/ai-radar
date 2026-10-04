@@ -184,6 +184,20 @@ def init_db(path: Path) -> sqlite3.Connection:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, check_same_thread=False)
+    try:
+        initialize_schema(conn)
+    except Exception:
+        conn.close()
+        raise
+    return conn
+
+
+def initialize_schema(conn: sqlite3.Connection) -> None:
+    """開いた接続へ共通のスキーマ初期化・migration を適用する.
+
+    ファイル DB と dry-run のメモリコピーで同じ互換性を保つ.
+    接続の close は呼び出し側が担当する.
+    """
     conn.row_factory = sqlite3.Row
 
     # 既存 articles に v3 カラムが無い場合は、_SCHEMA_SQL の CREATE INDEX が落ちる前に
@@ -205,7 +219,6 @@ def init_db(path: Path) -> sqlite3.Connection:
             f"スキーマバージョン不一致: DB={row['version']} > コード={SCHEMA_VERSION}. "
             "より新しいコードでDBが作られている可能性があります."
         )
-    return conn
 
 
 def _premigrate_columns_if_needed(conn: sqlite3.Connection) -> None:

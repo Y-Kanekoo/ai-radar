@@ -347,8 +347,20 @@ async def test_robots_disallow_skips_source(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_crawl_owns_client_when_none(tmp_path: Path) -> None:
-    """client=None で実行できる (実ネットワークを叩くがエラーで終わる)."""
+async def test_run_crawl_owns_client_when_none(tmp_path: Path, monkeypatch) -> None:
+    """内部 client の生成・エラー記録・close を通信なしで確認する."""
+    original = httpx.AsyncClient
+    clients = []
+
+    def handler(request):
+        raise httpx.ConnectError("stub connection failure", request=request)
+
+    def factory(**kwargs):
+        client = original(transport=httpx.MockTransport(handler), **kwargs)
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(httpx, "AsyncClient", factory)
     conn = init_db(tmp_path / "test.db")
     try:
         bad_src = SourceConfig(
@@ -371,6 +383,8 @@ async def test_run_crawl_owns_client_when_none(tmp_path: Path) -> None:
     finally:
         conn.close()
     assert result.errors  # 接続失敗が記録される
+    assert len(clients) == 1
+    assert clients[0].is_closed
 
 
 # ---------------- Phase 0.5: scraper 経路 ----------------

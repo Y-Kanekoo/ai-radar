@@ -147,6 +147,30 @@ so the same article is delivered only once per category.
 
 Configure these as **GitHub Actions secrets** for the `crawl.yml` workflow.
 
+Notification outcomes (Issue #8): category and aggregate results appear in logs and
+`GITHUB_STEP_SUMMARY`. `unconfigured` is an intentional skip (exit 0), distinct from
+`empty`, `score_filtered`, `sent`, `failed`, and `partial_failure`. An aggregate
+`partial_configuration` identifies a mix of configured and missing categories;
+per-category counts still show delivery results. A configured delivery or DB write
+failure exits 2. HTTP diagnostics contain status/attempt only, never webhook URLs,
+response bodies, or raw exceptions. `--verbose` also suppresses HTTP client logs.
+
+The workflow preserves the notification step's **outcome**, continues building,
+publishes the DB snapshot (including successful notification history), and deploys
+Pages independently. A separate failure job makes notification failure visible in
+the overall workflow result; it does not block publication. `skip_discord` skips
+notification explicitly. Merging changes does not send notifications: the existing
+09:00 / 15:00 / 21:00 JST schedule evaluates them on its next run.
+
+Only confirmed deliveries enter delivery history; failed deliveries remain eligible
+for retry. Existing score-filtered articles still enter suppression history without
+being sent. A remote acceptance followed by a DB write failure, timeout, or failed
+snapshot publication can cause duplicates on retry: delivery is not transactional
+with Discord, and this change does not add an outbox/ledger. `--dry-run` previews all
+categories without webhook configuration, uses an in-memory copy of the DB with the same schema migrations as normal execution,
+and neither sends HTTP requests nor writes notification/suppression history to the DB.
+Local stub tests do not establish real credentials or actual Discord reachability.
+
 ## Benchmark snapshots (Phase 3)
 
 Phase 3 introduces a *snapshot + diff* infrastructure for tracking leaderboards

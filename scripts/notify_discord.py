@@ -29,18 +29,17 @@ import argparse
 import asyncio
 import logging
 import os
+import sqlite3
 import sys
 from pathlib import Path
 
 import httpx
 
 from ai_radar.crawler.scoring import should_deliver
-from ai_radar.db import init_db
+from ai_radar.db import init_db, initialize_schema
 from ai_radar.publisher.discord import (
-    CATEGORY_ENV_PREFIX,
     DEFAULT_RATE_LIMIT_DELAY,
     DEFAULT_TIMEOUT,
-    FALLBACK_ENV,
     resolve_webhook,
     send_notification_with_message_id,
 )
@@ -141,9 +140,10 @@ def _dispatch_category(
         channel,
     )
 
-    # 閾値未満も通知済みとしてマーク (次回 fetch から除外)
-    for t in skipped:
-        mark_notified(conn, t.article_id, channel=channel)
+    # dry-run は履歴を変更しない. 通常実行では閾値未満を再評価しない.
+    if not dry_run:
+        for t in skipped:
+            mark_notified(conn, t.article_id, channel=channel)
 
     if not eligible:
         return (0, 0, len(skipped))
@@ -193,18 +193,23 @@ async def _send_per_item_and_mark(
                 client=client,
             )
             if ok:
+                try:
+                    if msg_id:
+                        mark_notified_with_message_id(
+                            conn,
+                            t.article_id,
+                            channel=channel,
+                            discord_message_id=msg_id,
+                            discord_channel_id=ch_id,
+                        )
+                    else:
+                        # webhook が ?wait=true を尊重しなかった場合のフォールバック
+                        mark_notified(conn, t.article_id, channel=channel)
+                except sqlite3.Error:
+                    failure += 1
+                    log.error("通知履歴の保存失敗 article_id=%d (再送可能性あり)", t.article_id)
+                    continue
                 success += 1
-                if msg_id:
-                    mark_notified_with_message_id(
-                        conn,
-                        t.article_id,
-                        channel=channel,
-                        discord_message_id=msg_id,
-                        discord_channel_id=ch_id,
-                    )
-                else:
-                    # webhook が ?wait=true を尊重しなかった場合のフォールバック
-                    mark_notified(conn, t.article_id, channel=channel)
             else:
                 failure += 1
                 log.debug("送信失敗 article_id=%d", t.article_id)
@@ -223,50 +228,108 @@ def main(argv: list[str] | None = None) -> int:
         log.error("DB が存在しません: %s", args.db_path)
         return 1
 
-    # webhook が 1 つも設定されていない場合は警告して終了
-    has_fallback = bool(os.environ.get(FALLBACK_ENV, "").strip())
-    has_any_category = any(
-        os.environ.get(f"{CATEGORY_ENV_PREFIX}{c.upper()}", "").strip() for c in KNOWN_CATEGORIES
-    )
-    if not has_fallback and not has_any_category and not args.dry_run:
-        log.warning(
-            "Discord webhook が 1 つも設定されていません (%s も AI_RADAR_DISCORD_WEBHOOK_* も未設定). "
-            "通知をスキップします.",
-            FALLBACK_ENV,
-        )
-        return 0
+    # HTTP のデバッグログにも webhook URL が含まれるため抑制する.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.CRITICAL)
 
-    conn = init_db(args.db_path)
-    total_success = 0
-    total_failure = 0
-    total_skipped = 0
+    rows: list[str] = []
+    total_success = total_failure = total_skipped = configured = 0
+    conn = None
     try:
         for category in KNOWN_CATEGORIES:
             webhook = resolve_webhook(category)
-            if not webhook:
-                log.debug("%s: webhook 未設定 (fallback も無し)", category)
-                continue
-            success, failure, skipped = _dispatch_category(
-                conn,
-                category=category,
-                webhook_url=webhook,
-                limit=args.limit,
-                rate_delay=args.rate_delay,
-                dry_run=args.dry_run,
-                log=log,
-            )
-            total_success += success
-            total_failure += failure
-            total_skipped += skipped
+            if not webhook and not args.dry_run:
+                row = f"{category}: status=unconfigured"
+            else:
+                configured += bool(webhook)
+                if conn is None:
+                    if args.dry_run:
+                        # migration を含め、実 DB には一切書き込まない.
+                        source = sqlite3.connect(
+                            args.db_path.resolve().as_uri() + "?mode=ro", uri=True
+                        )
+                        try:
+                            conn = sqlite3.connect(":memory:")
+                            source.backup(conn)
+                        finally:
+                            source.close()
+                        initialize_schema(conn)
+                    else:
+                        conn = init_db(args.db_path)
+                try:
+                    success, failure, skipped = _dispatch_category(
+                        conn,
+                        category,
+                        webhook or "",
+                        args.limit,
+                        args.rate_delay,
+                        args.dry_run,
+                        log,
+                    )
+                except sqlite3.Error:
+                    # 保存失敗も成功扱いしない. 生の例外に設定値を含めない.
+                    success, failure, skipped = 0, 1, 0
+                    log.error("%s: DB 読取・保存失敗 (送信済み記事の再送可能性あり)", category)
+                total_success += success
+                total_failure += failure
+                total_skipped += skipped
+                status = (
+                    "dry_run"
+                    if args.dry_run
+                    else "partial_failure"
+                    if failure and success
+                    else "failed"
+                    if failure
+                    else "sent"
+                    if success
+                    else "score_filtered"
+                    if skipped
+                    else "empty"
+                )
+                row = f"{category}: status={status} success={success} failure={failure} score閾値未満={skipped}"
+            log.info(row)
+            rows.append(row)
+    except sqlite3.Error:
+        total_failure += 1
+        log.error("DB を開けません (詳細は非表示)")
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
-    log.info(
-        "全カテゴリ合計: success=%d failure=%d score閾値未満=%d",
-        total_success,
-        total_failure,
-        total_skipped,
+    status = (
+        "partial_failure"
+        if total_failure and total_success
+        else "failed"
+        if total_failure
+        else "dry_run"
+        if args.dry_run
+        else "unconfigured"
+        if not configured
+        else "partial_configuration"
+        if configured < len(KNOWN_CATEGORIES)
+        else "sent"
+        if total_success
+        else "score_filtered"
+        if total_skipped
+        else "empty"
     )
+    summary = (
+        f"全カテゴリ合計: status={status} success={total_success} failure={total_failure} "
+        f"score閾値未満={total_skipped} configured={configured}/{len(KNOWN_CATEGORIES)}"
+    )
+    log.info(summary)
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        try:
+            with Path(summary_path).open("a", encoding="utf-8") as out:
+                out.write(
+                    "### Discord notification\n\n"
+                    + "\n".join(f"- {r}" for r in [*rows, summary])
+                    + "\n"
+                )
+        except OSError:
+            log.error("通知 summary の保存に失敗")
+            return 2
     return 0 if total_failure == 0 else 2
 
 
