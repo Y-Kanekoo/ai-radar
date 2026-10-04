@@ -76,3 +76,54 @@ Confirm the first generated PR and its manifest/lock diff operationally.
 References: [uv Dependabot integration](https://docs.astral.sh/uv/guides/integration/dependabot/),
 [lock freshness semantics](https://docs.astral.sh/uv/concepts/projects/sync/), and
 [GitHub supported ecosystems](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories).
+
+### Installer integrity and cache acceptance (Issue #17)
+
+All setup-uv steps use the official v10.2.0 release commit
+`c18668ad3cf93ea998bef934396af7bb5c839dc7` (Node 24). This is supported by
+our GitHub-hosted Ubuntu runners; changing to a self-hosted runner requires
+checking its Node 24 support first. The explicit SHA-256 is for **uv 0.12.19,
+Linux x86_64 GNU only**:
+`23bf5552d220e0842b65c862097b2ebaeba0064b74eda5e565e77fd25969d8c8`.
+It was checked against both the [official checksum file](https://github.com/astral-sh/uv/releases/download/0.12.19/uv-x86_64-unknown-linux-gnu.tar.gz.sha256)
+and downloaded archive on 2026-10-04. Other platforms require separately
+verified checksums. Workflow policy tests reject an absent/changed checksum,
+a mutable action tag, or an incompatible runner.
+
+The action validates the archive before extraction on a cold download, but
+bypasses that path when its installer tool-cache already contains uv. Therefore
+only the setup step receives a fresh runner-temporary `RUNNER_TOOL_CACHE`.
+This installer cache is separate from the restored **project dependency cache**.
+The package lock and Python minor versions are unchanged. The action's
+[checksum implementation](https://github.com/astral-sh/setup-uv/blob/c18668ad3cf93ea998bef934396af7bb5c839dc7/src/download/checksum/checksum.ts)
+and [download order](https://github.com/astral-sh/setup-uv/blob/c18668ad3cf93ea998bef934396af7bb5c839dc7/src/download/download-version.ts)
+were verified with its shipped Node bundle, an isolated loopback fixture and
+no token: correct archive accepted; wrong checksum, missing manifest checksum,
+and modified archive rejected before tool registration. This local experiment
+does not establish hosted cache availability.
+
+CI records the producer's `cache-hit` and primary `cache-key` without skipping
+locked sync on a miss. Its stable, Python-specific suffix permits reuse across
+runs; do not add a permanent run-ID suffix that forces all builds cold. CI keeps
+unpruned dependency artifacts so a fresh consumer job, after the producer's
+post-save, must report a hit and install with `uv sync --locked --offline` into
+an absent `.venv`. Python installation itself is outside that offline command.
+The consumer does not save caches. Scheduled/publishing workflows retain cache
+pruning and their existing triggers, permissions and notification behavior.
+
+For acceptance, inspect **both** jobs' logs at the published revision: record an
+initial miss, successful post-save, matching producer/consumer primary keys,
+a consumer hit and offline sync. A producer's cold-install success, or a generic
+"cache saved" message alongside an HTTP error, is not restoration proof.
+If the cache service is unavailable, normal producer checks still run, while
+the consumer gate fails; report that failure rather than claiming Issue #17
+resolved. Do not dispatch notification workflows to exercise this test.
+See the vendor [cache contract](https://github.com/astral-sh/setup-uv/blob/c18668ad3cf93ea998bef934396af7bb5c839dc7/docs/caching.md).
+
+When updating uv or setup-uv, review the immutable official release, verify the
+new platform-specific archive digest, update the workflow pins and policy tests
+together, and repeat cold good/bad installer and cache checks. Dependabot PR #4
+proposed only the older v7 tag in four files; this change supersedes that proposal
+on current main with six production/CI workflows and the integrity acceptance
+criteria. PR #4 is not edited or merged by this work. Hosted Dependabot PR
+creation and real notification delivery remain separate operational checks.
