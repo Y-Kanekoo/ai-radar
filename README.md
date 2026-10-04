@@ -167,8 +167,8 @@ for retry. Existing score-filtered articles still enter suppression history with
 being sent. A remote acceptance followed by a DB write failure, timeout, or failed
 snapshot publication can cause duplicates on retry: delivery is not transactional
 with Discord, and this change does not add an outbox/ledger. `--dry-run` previews all
-categories without webhook configuration, uses an in-memory copy of the DB, and
-neither sends HTTP requests nor writes notification/suppression history to the DB.
+categories without webhook configuration, uses an in-memory copy of the DB with the same schema migrations as normal execution,
+and neither sends HTTP requests nor writes notification/suppression history to the DB.
 Local stub tests do not establish real credentials or actual Discord reachability.
 
 ## Benchmark snapshots (Phase 3)

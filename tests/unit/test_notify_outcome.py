@@ -221,3 +221,44 @@ runpy.run_path('scripts/notify_discord.py', run_name='__main__')
     with sqlite3.connect(setup) as conn:
         count = conn.execute("SELECT COUNT(*) FROM article_notifications").fetchone()[0]
     assert count == (1 if expected_exit == 0 else 0)
+
+
+@pytest.mark.parametrize("legacy", [False, True], ids=["current-schema", "pre-v4-schema"])
+@pytest.mark.parametrize("deliver", [False, True], ids=["score-filtered", "eligible"])
+def test_dry_run_migrates_only_memory_copy(setup, monkeypatch, caplog, legacy, deliver):
+    """旧 schema もプレビュー可能で、元 DB の schema/bytes/履歴は不変."""
+    conn = init_db(setup)
+    _setup_article(conn)
+    if legacy:
+        conn.execute("ALTER TABLE articles DROP COLUMN is_hype")
+        conn.execute("ALTER TABLE sources DROP COLUMN tier")
+        conn.execute("DROP INDEX idx_notifications_discord_msg")
+        conn.execute("ALTER TABLE article_notifications DROP COLUMN discord_message_id")
+        conn.execute("ALTER TABLE article_notifications DROP COLUMN discord_channel_id")
+        conn.execute("UPDATE schema_version SET version = 3")
+        conn.commit()
+    conn.close()
+    before = setup.read_bytes()
+    with sqlite3.connect(setup) as conn:
+        before_dump = tuple(conn.iterdump())
+    evaluated = []
+
+    def score(**kwargs):
+        evaluated.append(kwargs)
+        return deliver
+
+    monkeypatch.setattr(nd, "should_deliver", score)
+    monkeypatch.setattr(nd.httpx, "AsyncClient", lambda **kw: pytest.fail("dry-run HTTP"))
+    caplog.set_level(logging.INFO)
+    assert nd.main(["--db-path", str(setup), "--dry-run"]) == 0
+    assert len(evaluated) == 1
+    assert evaluated[0]["tier"] == (3 if legacy else 1)
+    assert evaluated[0]["is_hype"] is False
+    assert "status=dry_run" in caplog.text
+    assert "failure=0" in caplog.text
+    if deliver:
+        assert "[DRY release]" in caplog.text
+    assert setup.read_bytes() == before
+    with sqlite3.connect(setup) as conn:
+        assert tuple(conn.iterdump()) == before_dump
+        assert conn.execute("SELECT COUNT(*) FROM article_notifications").fetchone()[0] == 0

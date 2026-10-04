@@ -36,7 +36,7 @@ from pathlib import Path
 import httpx
 
 from ai_radar.crawler.scoring import should_deliver
-from ai_radar.db import init_db
+from ai_radar.db import init_db, initialize_schema
 from ai_radar.publisher.discord import (
     DEFAULT_RATE_LIMIT_DELAY,
     DEFAULT_TIMEOUT,
@@ -248,10 +248,12 @@ def main(argv: list[str] | None = None) -> int:
                         source = sqlite3.connect(
                             args.db_path.resolve().as_uri() + "?mode=ro", uri=True
                         )
-                        conn = sqlite3.connect(":memory:")
-                        source.backup(conn)
-                        source.close()
-                        conn.row_factory = sqlite3.Row
+                        try:
+                            conn = sqlite3.connect(":memory:")
+                            source.backup(conn)
+                        finally:
+                            source.close()
+                        initialize_schema(conn)
                     else:
                         conn = init_db(args.db_path)
                 try:
