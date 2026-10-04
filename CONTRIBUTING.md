@@ -139,14 +139,26 @@ an absent `.venv`. Python installation itself is outside that offline command.
 The consumer does not save caches. Scheduled/publishing workflows retain cache
 pruning and their existing triggers, permissions and notification behavior.
 
-Cache acceptance is distinct from installer acceptance. PR #18 run
-`37210130791` already demonstrated producer miss → save → exact-key hit →
-offline sync for both Python versions. Preserve that evidence at its revision.
-For a later revision/retry, record whether the producer is warm or cold, compare
-producer/consumer primary keys, and require consumer hit plus offline sync.
-A stable key may correctly restore an earlier run; do not call that a new cold
-round trip. Testing an additional cold cycle would require a separately scoped
-fixture key and independent evidence, not disabling normal cache reuse. A producer's cold-install success, or a generic
+Cache acceptance is distinct from installer acceptance. The normal lint/test
+job retains its stable Python-specific cache key and may restore previous runs.
+A separate `cache-seed` matrix, after lint/tests, uses an acceptance-only suffix
+containing `github.run_id`, `github.run_attempt`, and the Python series. It must
+observe a miss, complete a locked install and save. The dependent `cache-restore`
+matrix uses the same suffix and must observe an exact-key hit before offline
+installation into a fresh `.venv`. Retries get a new proof key; neither proof job
+changes normal production/lint cache keys. These two additional seed jobs and
+per-attempt acceptance caches are the cost of proving a cold cycle at every
+final revision instead of accepting historical evidence. If a run needs retry,
+this proof requires **Re-run all jobs**: a failed-consumer-only rerun increments
+its attempt while the successful seed retains the old key, so it must miss.
+Do not diagnose that expected key mismatch as a cache service failure or accept
+it as a fresh cold-cycle proof. No rerun or dispatch is performed by this change.
+
+For acceptance, inspect this revision's producer/consumer logs and compare the
+full primary keys, not just the suffix. Record miss → successful post-save →
+exact-key hit → offline sync for both Python versions. Earlier run `37210130791`
+remains historical evidence only and cannot satisfy the final-head gate.
+A producer's cold-install success, or a generic
 "cache saved" message alongside an HTTP error, is not restoration proof.
 If the cache service is unavailable, normal producer checks still run, while
 the consumer gate fails; report that failure rather than claiming Issue #17

@@ -30,7 +30,7 @@ def test_all_workflows_verify_installer() -> None:
                 if step.get("uses", "").startswith("astral-sh/setup-uv@"):
                     check_installer(job, step)
                     count += 1
-    assert count == 7
+    assert count == 8
 
 
 @pytest.mark.parametrize("change", ["missing", "wrong", "tag", "tool-cache", "runner"])
@@ -55,9 +55,12 @@ def test_installer_policy_rejects_incompatible_configuration(change: str) -> Non
 
 def test_cache_consumer_isolated_and_requires_producer() -> None:
     workflow = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text())
-    producer = workflow["jobs"]["lint-and-test"]
+    producer = workflow["jobs"]["cache-seed"]
+    normal = workflow["jobs"]["lint-and-test"]
     consumer = workflow["jobs"]["cache-restore"]
-    assert consumer["needs"] == "lint-and-test"
+    assert consumer["needs"] == "cache-seed"
+    assert producer["needs"] == "lint-and-test"
+    assert producer["strategy"]["matrix"] == normal["strategy"]["matrix"]
     assert consumer["strategy"]["matrix"] == producer["strategy"]["matrix"]
     steps = [next(s for s in j["steps"] if s.get("id") == "uv") for j in [producer, consumer]]
     for key in [
@@ -70,6 +73,16 @@ def test_cache_consumer_isolated_and_requires_producer() -> None:
     ]:
         assert steps[0]["with"][key] == steps[1]["with"][key]
     assert steps[1]["with"]["save-cache"] is False
+    assert steps[0]["with"]["save-cache"] is True
+    assert steps[0]["with"]["cache-suffix"] == (
+        "acceptance-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.python-version }}"
+    )
+    normal_setup = next(s for s in normal["steps"] if s.get("id") == "uv")
+    assert normal_setup["with"]["cache-suffix"] == "installer-v10-${{ matrix.python-version }}"
+    seed_commands = "\n".join(s.get("run", "") for s in producer["steps"])
+    assert 'test "$CACHE_HIT" = "false"' in seed_commands
+    assert "test ! -d .venv" in seed_commands
+    assert "uv sync --locked --all-extras --dev" in seed_commands
     assert steps[0]["with"]["prune-cache"] is False
     commands = "\n".join(s.get("run", "") for s in consumer["steps"])
     assert 'test "$CACHE_HIT" = "true"' in commands
