@@ -36,20 +36,28 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
+          version: "0.12.19"
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
 
       - name: Set up Python 3.11
         run: uv python install 3.11
 
       - name: Sync dependencies
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
+
+      - name: Record tool versions
+        run: |
+          uv --version
+          uv run --locked python --version
 
       - name: Restore previous DB from Releases (if exists)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          uv run python scripts/publish_release.py \
+          uv run --locked python scripts/publish_release.py \
             --mode download \
             --repo "${{ github.repository }}" \
             --download-to data/articles.db || echo "No previous release; starting fresh"
@@ -63,14 +71,14 @@ jobs:
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
           fi
-          uv run python scripts/collect_reactions.py $ARGS
+          uv run --locked python scripts/collect_reactions.py $ARGS
 
       - name: Publish DB snapshot to GH Releases
         if: ${{ inputs.dry_run != true }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          uv run python scripts/publish_release.py \
+          uv run --locked python scripts/publish_release.py \
             --mode full \
             --repo "${{ github.repository }}" \
             --retention-days 7
