@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 
 **ai-radar** は AI / LLM 領域の公式リリース、論文、ニュースレター、製品アップデートを
-11 以上の検証済みソース（英語 + 日本語）から自動収集し、以下 3 形式で配信します:
+26 の設定済みソース（英語 + 日本語）から自動収集し、以下 3 形式で配信します:
 
 1. **公開 RSS フィード** — GitHub Pages でホスト
 2. **ローカル MCP サーバー** — Claude Desktop / Claude Code から自然言語で問い合わせ
@@ -18,7 +18,7 @@
 
 ## 開発状況
 
-🚧 開発中（Phase 4a まで実装済み・DB スキーマ v6。Phase 4.5 以降は未着手。2026-05-13 起動）。
+🚧 開発中（Phase 0〜4a・5 実装済み・DB スキーマ v6。Phase 4.5・6 は未着手。2026-05-13 起動）。
 
 | Phase | スコープ | 状態 |
 |-------|---------|------|
@@ -30,27 +30,36 @@
 | 3.5. ベンチマーク拡充 | BigCodeBench + AlpacaEval 追加。Open LLM v2 / HELM は見送り | ✅ |
 | 4a. リアクション収集 | Discord message_id 保存 + Bot API でリアクション収集 + DB v6 `reactions` テーブル（スコアへの反映は no-op で 1.0 固定） | ✅ |
 | 4.5. パーソナライゼーション | リアクションからの Bayesian（Beta 事後分布）推薦、A/B test、Trending キーワード動的化 | ⏳ |
-| 5. 日本語 + Podcast | Zenn / Qiita / はてブ / Cognitive Revolution 等 | ⏳ |
+| 5. 日本語 + Podcast | Zenn / Qiita / はてブ / Cognitive Revolution | ✅ |
 | 6. core 抽出 | qa-radar-core 抽出の再検討 | ⏳ |
 
 詳細は [README.md](README.md) の Dedup 5-layer / Discord 7-channel webhook セクション参照。
 
-## 集約ソース（Phase 0、RSS 優先）
+## 集約ソース（26 ソース、Phase 0 + 0.5 + 5）
 
-11 ソース（カテゴリ別）。Phase 0 は RSS 直取りのみ。スクレイピング対象
-（Anthropic / HF Papers / Cursor / Sakana 等）は scraper レイヤー実装後の
-Phase 0.5 で追加します。
+全26ソースが有効（RSS/Atom 18 + HTML scraper 8）。Phase 5 の追加6本は
+2026-10-31 に curl で HTTP 200、RSS/Atomのパース、robots.txt と公開規約を確認。
+既存20本の確認日は2026-05-13のままです。`fetch_kind: rss` はAtom・RSS 1.0（RDF）を含みます。
 
 | カテゴリ | ソース |
 |---|---|
-| **公式リリース (Tier 1)** | Hugging Face Blog, Google Research Blog, Microsoft AI News |
-| **論文** | arXiv cs.LG |
-| **ニュースレター** | TLDR AI, Ben's Bites, Latent Space |
-| **ツール / Code Editor** | Windsurf, Replit |
-| **動画 / 画像生成** | Midjourney (updates.midjourney.com) |
-| **日本語** | Stockmark |
+| **公式リリース（RSS）** | Hugging Face Blog, Google Research Blog, Microsoft AI News, Midjourney Updates, Sakana AI |
+| **公式リリース（scraper）** | Anthropic News, Kimi Blog (Moonshot), Luma AI News, Black Forest Labs |
+| **論文（RSS）** | arXiv cs.LG |
+| **論文（scraper）** | Hugging Face Papers (Daily), Allen AI Blog |
+| **ニュースレター（RSS）** | TLDR AI, Ben's Bites, Latent Space |
+| **ポッドキャスト（RSS、category: newsletter）** | The Cognitive Revolution |
+| **ツール / Code Editor（RSS）** | Windsurf, Replit |
+| **ツール / Code Editor（scraper）** | Cursor |
+| **日本語（RSS/Atom）** | Stockmark, Zenn LLM, Zenn 生成AI, Qiita LLM, Qiita 生成AI, はてなブックマーク AI |
+| **日本語（scraper）** | ELYZA News |
 
-詳細は [config/sources.yaml](config/sources.yaml) を参照。
+Cognitive Revolution は既存の `newsletter` カテゴリ・Tier 3 とし、同カテゴリの
+Discord webhook に配信します。記事リンクのないエピソードは音声enclosureのURLを参照先に
+使います。音声の取得・再配信は行いません。Zenn・Qiita はTier 4、はてブはTier 5です。
+トピック・タグの重複記事には既存のソース横断重複排除が適用されます。
+
+URL・取得間隔・確認日・利用条件は [config/sources.yaml](config/sources.yaml) を参照。
 
 ## AI 12タグ
 

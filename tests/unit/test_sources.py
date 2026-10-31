@@ -14,14 +14,15 @@ from ai_radar.sources import (
 )
 
 
-def test_loads_20_sources_from_real_yaml() -> None:
-    """実際の config/sources.yaml が Phase 0.5 の 20 ソースで正常パース.
+def test_loads_26_sources_from_real_yaml() -> None:
+    """実際の config/sources.yaml が Phase 5 時点の 26 ソースで正常パース.
 
-    内訳: Phase 0 (11 sources, RSS) + Phase 0.5 (9 sources, 1 RSS + 8 scraper).
-    Phase 3 以降の追加で更新.
+    内訳: Phase 0 (11 sources, RSS) + Phase 0.5 (9 sources, 1 RSS + 8 scraper)
+    + Phase 5 (6 sources, 日本語 RSS 5 + Podcast 1).
+    ソース追加時に更新.
     """
     sources = load_sources()
-    assert len(sources) == 20
+    assert len(sources) == 26
 
 
 def test_all_sources_have_required_fields() -> None:

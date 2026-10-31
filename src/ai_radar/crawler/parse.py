@@ -44,8 +44,18 @@ def parse_feed(content: bytes | str) -> ParsedFeed:
     parsed = feedparser.parse(content)
     items: list[ParsedItem] = []
     for entry in parsed.entries:
-        guid = entry.get("id") or entry.get("link") or ""
         url = entry.get("link") or ""
+        if not url:
+            # 記事リンクのないポッドキャストは音声URLを参照先にする。音声は取得しない。
+            url = next(
+                (
+                    enclosure.get("href")
+                    for enclosure in entry.get("enclosures", [])
+                    if enclosure.get("type", "").startswith("audio/") and enclosure.get("href")
+                ),
+                "",
+            )
+        guid = entry.get("id") or url
         title = entry.get("title") or "(no title)"
 
         body = ""

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 実フィードの構造を再現した合成データ。第三者の記事本文は含めない。 -->
+<rdf:RDF xmlns="http://purl.org/rss/1.0/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel rdf:about="https://b.hatena.ne.jp/q/AI?mode=rss">
+    <title>タグ「AI」を検索 - はてなブックマーク</title>
+    <link>https://b.hatena.ne.jp/q/AI</link>
+    <description>テスト用のAI関連ブックマーク</description>
+    <items><rdf:Seq><rdf:li rdf:resource="https://example.com/ai-research"/></rdf:Seq></items>
+  </channel>
+  <item rdf:about="https://example.com/ai-research">
+    <title>AI研究の新しい評価指標</title>
+    <link>https://example.com/ai-research</link>
+    <description>日本語で読む研究動向。</description>
+    <content:encoded><![CDATA[<p>日本語で読む研究動向。</p>]]></content:encoded>
+    <dc:date>2026-10-31T09:00:00Z</dc:date>
+  </item>
+</rdf:RDF>

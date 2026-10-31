@@ -6,6 +6,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Phase 5 — 日本語ソース + Podcast（2026-10-31）
+
+#### Added
+
+- Zenn（LLM / 生成AI）、Qiita（LLM / 生成AI）、はてなブックマーク（AI）、
+  The Cognitive Revolution公式RSSの6本を追加。全26ソース（RSS/Atom 18 + scraper 8）。
+- 追加URLはcurlでHTTP 200、RSS/Atomパース、robots.txt・公開規約を確認し、
+  確認日・利用条件を `license_note` に記録。日本語5本は既存 `jp`、
+  Podcastは既存 `newsletter`（Tier 3）で配信し、カテゴリ値域は維持。
+- 合成fixtureによる設定ロード・RSS 2.0 / Atom / RSS 1.0のパース・DB保存・
+  再取り込みの重複排除を検証するネットワーク非依存テストを追加。
+
+#### Fixed
+
+- 記事リンクがないPodcastエピソードは音声enclosure URLを参照先に使用。
+  記事リンクを優先し、音声は取得・再配信しない。公式RSS内のリンク欠落2件に対応。
+- 英日READMEのPhase 5を完了に更新し、ソース総数・取得方式・カテゴリ別一覧を実設定に同期。
+
 ### SQLite DROP COLUMN portability (2026-10-31)
 
 #### Fixed

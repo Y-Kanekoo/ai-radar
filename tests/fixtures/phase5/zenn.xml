@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 実フィードの構造を再現した合成データ。第三者の記事本文は含めない。 -->
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Zenn AI フィード</title>
+    <link>https://zenn.dev/topics/llm</link>
+    <description>テスト用のトピックフィード</description>
+    <item>
+      <title>ローカルLLMの評価方法</title>
+      <link>https://zenn.dev/test_author/articles/local-llm</link>
+      <guid isPermaLink="true">https://zenn.dev/test_author/articles/local-llm</guid>
+      <dc:creator>テスト著者</dc:creator>
+      <description><![CDATA[<p>日本語モデルを比較する手順。</p>]]></description>
+      <pubDate>Sat, 31 Oct 2026 09:00:00 GMT</pubDate>
+      <enclosure url="https://example.com/cover.png" length="0" type="image/png"/>
+    </item>
+  </channel>
+</rss>
