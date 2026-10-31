@@ -2,31 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import feedparser
-
-
-@dataclass
-class ParsedItem:
-    """フィード1エントリの正規化前データ."""
-
-    guid: str
-    url: str
-    title: str
-    body: str  # HTML を含み得る. 後段で strip_html される
-    author: str | None
-    # struct_time 互換タプル (year, month, day, hour, min, sec). UTC前提
-    published_struct: tuple[int, ...] | None
-
-
-@dataclass
-class ParsedFeed:
-    """`parse_feed()` の戻り値."""
-
-    items: list[ParsedItem]
-    bozo: bool
-    bozo_exception: str | None
+from radar_core.parse import ParsedFeed as ParsedFeed
+from radar_core.parse import ParsedItem as ParsedItem
 
 
 def parse_feed(content: bytes | str) -> ParsedFeed:

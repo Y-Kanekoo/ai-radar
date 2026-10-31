@@ -2,39 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
 import httpx
+from radar_core.fetch import FetchResult as FetchResult
 
 from ai_radar import __version__
 
 USER_AGENT = f"ai-radar/{__version__} (+https://github.com/Y-Kanekoo/ai-radar)"
 DEFAULT_TIMEOUT = 30.0
 ACCEPT_HEADER = "application/atom+xml, application/rss+xml, application/xml, text/xml, */*"
-
-
-@dataclass
-class FetchResult:
-    """`fetch_feed()` の戻り値."""
-
-    url: str
-    status_code: int
-    content: bytes | None  # 304 Not Modified 時は None
-    etag: str | None
-    last_modified: str | None
-    error: str | None = None
-
-    @property
-    def is_modified(self) -> bool:
-        """200 で本文が取れている."""
-        return self.status_code == 200 and self.content is not None
-
-    @property
-    def is_not_modified(self) -> bool:
-        """304 Not Modified."""
-        return self.status_code == 304
 
 
 async def fetch_feed(

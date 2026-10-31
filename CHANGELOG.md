@@ -6,6 +6,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Phase 6 — radar-core 第1段階の利用開始（2026-11-01）
+
+#### Added
+
+- `radar-core @ git+https://github.com/Y-Kanekoo/radar-core@v0.1.0` を依存に追加し、
+  lockfile で参照先コミットを固定。Hatchling の直接参照を許可。
+- URL・日時・HTML除去・本文ハッシュ・正の上限の抜粋を共有ライブラリへ委譲。
+  `max_chars <= 0` は従来処理を残し、公開シグネチャと戻り値・例外を維持。
+- `FetchResult` / `ParsedItem` / `ParsedFeed` を既存モジュールから再エクスポート。
+  挙動差のある取得・解析本体と Discord 通知は維持し、理由を `docs/radar-core.md` に記録。
+- import 時の httpx/httpcore ログ中の Webhook URL マスクを、意図したセキュリティ強化として導入。
+- 互換性テストを追加。既存テストは変更せず、英日 README の Phase 6 を実装に合わせて更新。
+
 ### Phase 5 — 日本語ソース + Podcast（2026-10-31）
 
 #### Added
