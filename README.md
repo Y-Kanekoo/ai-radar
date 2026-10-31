@@ -20,7 +20,7 @@ For the Japanese readme, see [README.ja.md](README.ja.md).
 
 ## Status
 
-🚧 Under active development (Phases 0–4a and 5 implemented — DB schema v6; Phases 4.5 and 6 pending. Launched 2026-05-13).
+🚧 Under active development (Phases 0–4a and 5 implemented — DB schema v6; Phase 6 stage 1 adopted; Phase 4.5 pending. Launched 2026-05-13).
 
 | Phase | Scope | Status |
 |-------|-------|--------|
@@ -33,7 +33,13 @@ For the Japanese readme, see [README.ja.md](README.ja.md).
 | 4a. Reaction collector | Discord message_id capture + Bot API reaction collector + DB v6 `reactions` table (scoring hook is a no-op returning 1.0) | ✅ |
 | 4.5. Personalization | Bayesian (Beta posterior) recommendation from reactions, A/B test, dynamic Trending keywords | ⏳ |
 | 5. JP sources + Podcast | Zenn / Qiita / Hatena / Cognitive Revolution | ✅ |
-| 6. Core extraction | Reconsider qa-radar-core abstraction | ⏳ |
+| 6. Core extraction | Extracted [radar-core](https://github.com/Y-Kanekoo/radar-core) v0.1.0; stage 1 uses its normalization and fetch/parse data types | 🚧 |
+
+The shared library `radar-core` is pinned to the v0.1.0 tag (and its commit in the lockfile).
+Normalization and the fetch/parse data types are shared; fetch/parse logic with behavioral differences and Discord publishing stay in ai-radar for now.
+radar-core masks Discord webhook URLs in httpx/httpcore logs at import time — an intended security hardening.
+See the [staged adoption notes (Japanese)](docs/radar-core.md) for differences and next-stage candidates.
+Before publishing to PyPI, the direct git dependency must be replaced (PyPI rejects direct URL dependencies).
 
 ## Sources (26 total, Phases 0 + 0.5 + 5)
 

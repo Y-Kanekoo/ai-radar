@@ -18,7 +18,7 @@
 
 ## 開発状況
 
-🚧 開発中（Phase 0〜4a・5 実装済み・DB スキーマ v6。Phase 4.5・6 は未着手。2026-05-13 起動）。
+🚧 開発中（Phase 0〜4a・5 実装済み・DB スキーマ v6。Phase 6 は第1段階の利用開始済み。Phase 4.5 は未着手。2026-05-13 起動）。
 
 | Phase | スコープ | 状態 |
 |-------|---------|------|
@@ -31,7 +31,12 @@
 | 4a. リアクション収集 | Discord message_id 保存 + Bot API でリアクション収集 + DB v6 `reactions` テーブル（スコアへの反映は no-op で 1.0 固定） | ✅ |
 | 4.5. パーソナライゼーション | リアクションからの Bayesian（Beta 事後分布）推薦、A/B test、Trending キーワード動的化 | ⏳ |
 | 5. 日本語 + Podcast | Zenn / Qiita / はてブ / Cognitive Revolution | ✅ |
-| 6. core 抽出 | qa-radar-core 抽出の再検討 | ⏳ |
+| 6. core 抽出 | radar-core v0.1.0 を切り出し、第1段階で正規化・取得/解析データ型の利用開始 | 🚧 |
+
+共有ライブラリ `radar-core` は v0.1.0 タグと lockfile のコミットで固定しています。
+正規化処理と取得・解析のデータ型を共有化し、挙動差のある取得・解析本体と Discord 通知は維持します。
+import 時の Webhook URL マスクは、意図したセキュリティ強化として適用します。
+差分と次の段階の候補は [段階的導入メモ](docs/radar-core.md) を参照してください。
 
 詳細は [README.md](README.md) の Dedup 5-layer / Discord 7-channel webhook セクション参照。
 

@@ -6,128 +6,25 @@
 
 from __future__ import annotations
 
-import calendar
-import hashlib
 import re
-import time
-from html.parser import HTMLParser
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-# 削除する追跡パラメータ. 大文字小文字区別なし.
-# Phase 1 で 10 → 19 個に拡張. `src`/`source` は一部サイトで意味のある値を持つので含めない.
-TRACKING_PARAMS = frozenset(
-    {
-        # UTM (Google Analytics 系)
-        "utm_source",
-        "utm_medium",
-        "utm_campaign",
-        "utm_term",
-        "utm_content",
-        # 各広告プラットフォーム
-        "fbclid",  # Facebook
-        "gclid",  # Google Ads
-        "yclid",  # Yandex
-        "ref",
-        "ref_src",
-        "twclid",  # X / Twitter
-        "msclkid",  # Microsoft Ads
-        "dclid",  # DoubleClick
-        # Mailchimp
-        "mc_cid",
-        "mc_eid",
-        # HubSpot
-        "_hsenc",
-        "_hsmi",
-        "hsctatracking",  # lower-cased for comparison
-        # Instagram
-        "igshid",
-        # Alibaba
-        "spm",
-    }
-)
-
-# arXiv URL から version suffix を除去するパターン.
-# 例: /abs/2301.12345v2 -> /abs/2301.12345
-_ARXIV_VERSION = re.compile(r"^(/abs/\d+\.\d+)v\d+/?$")
+from radar_core import normalize as _core
+from radar_core.normalize import TRACKING_PARAMS as TRACKING_PARAMS
 
 
 def normalize_url(url: str) -> str:
-    """URL を正規化する (dedup 5層の層1).
-
-    変換内容:
-    1. scheme/host を小文字化
-    2. 追跡パラメータ (TRACKING_PARAMS) と fragment を除去
-    3. arXiv の version suffix (`v1`/`v2` 等) を除去
-    4. ルート以外の末尾スラッシュを除去 (`/blog/` → `/blog`)
-
-    空文字や scheme 無しの URL は無加工で返す (旧挙動互換).
-    """
-    parsed = urlparse(url)
-    if not parsed.scheme:
-        return url
-
-    # 追跡パラメータ除去 (キーを lower-case で比較)
-    qs = [(k, v) for k, v in parse_qsl(parsed.query) if k.lower() not in TRACKING_PARAMS]
-
-    path = parsed.path
-    netloc = parsed.netloc.lower()
-
-    # arXiv version suffix 除去 (export.arxiv.org / arxiv.org の両方を含む)
-    if netloc.endswith("arxiv.org"):
-        match = _ARXIV_VERSION.match(path)
-        if match:
-            path = match.group(1)
-
-    # 末尾スラッシュ統一: パスが "/" 単体でなければ末尾スラッシュを除去
-    if len(path) > 1 and path.endswith("/"):
-        path = path.rstrip("/")
-
-    return urlunparse(
-        (
-            parsed.scheme.lower(),
-            netloc,
-            path,
-            parsed.params,
-            urlencode(qs),
-            "",  # fragment は削除
-        )
-    )
+    """URL を正規化する。既存の引数を維持して共有処理へ委譲する。"""
+    return _core.normalize_url(url)
 
 
 def normalize_published(struct_time: tuple[int, ...] | None) -> int:
-    """published_parsed (UTC tuple) をUNIX秒に変換. None は現在時刻を返す."""
-    if struct_time is None:
-        return int(time.time())
-    padded = struct_time + (0,) * (9 - len(struct_time))
-    return calendar.timegm(padded)
-
-
-class _StripTags(HTMLParser):
-    """HTMLタグを除去しテキストノードのみ抽出する補助パーサ."""
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self._chunks: list[str] = []
-
-    def handle_data(self, data: str) -> None:
-        self._chunks.append(data)
-
-    def get_text(self) -> str:
-        return "".join(self._chunks)
+    """published_parsed (UTC tuple) をUNIX秒に変換。None は現在時刻。"""
+    return _core.normalize_published(struct_time)
 
 
 def strip_html(text: str) -> str:
-    """HTMLタグを除去しエンティティをデコードする."""
-    if not text:
-        return ""
-    parser = _StripTags()
-    try:
-        parser.feed(text)
-        parser.close()
-    except (ValueError, AssertionError):
-        # 壊れたHTMLの場合は元テキストをそのまま返す
-        return text
-    return parser.get_text()
+    """HTMLタグを除去しエンティティをデコードする。"""
+    return _core.strip_html(text)
 
 
 _WS = re.compile(r"\s+")
@@ -146,6 +43,9 @@ def make_snippet(body: str, max_chars: int = 100) -> str:
     Returns:
         抜粋. max_chars を超える場合は末尾に `…` を付ける.
     """
+    if max_chars > 0:
+        return _core.make_snippet(body, max_chars)
+    # radar-core が拒否する0以下の上限は、従来のスライス処理を維持する。
     plain = strip_html(body)
     plain = _WS.sub(" ", plain).strip()
     if len(plain) <= max_chars:
@@ -158,6 +58,5 @@ def make_snippet(body: str, max_chars: int = 100) -> str:
 
 
 def compute_body_hash(body: str) -> str:
-    """正規化後本文の SHA256 hex digest. クロスソース重複検出用."""
-    plain = _WS.sub(" ", strip_html(body)).strip()
-    return hashlib.sha256(plain.encode("utf-8")).hexdigest()
+    """正規化後本文の SHA256 hex digest。クロスソース重複検出用。"""
+    return _core.compute_body_hash(body)
