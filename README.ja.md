@@ -10,7 +10,7 @@
 
 1. **公開 RSS フィード** — GitHub Pages でホスト
 2. **ローカル MCP サーバー** — Claude Desktop / Claude Code から自然言語で問い合わせ
-3. **Discord webhook** — 新着記事を category 別チャンネルにプッシュ通知（Phase 2 で 7ch 化予定）
+3. **Discord webhook** — 新着記事を category 別チャンネルにプッシュ通知（Phase 1 で 7ch 化済み）
 
 姉妹プロジェクト [qa-radar](https://github.com/Y-Kanekoo/qa-radar) と同一の
 `crawler / publisher / tagger / summarizer` コアを共有していますが、AI/LLM 用に
@@ -18,7 +18,7 @@
 
 ## 開発状況
 
-🚧 Phase 1 進行中（2026-05-13 起動、20 ソース + dedup 5層 + 7ch Discord 完了）。
+🚧 開発中（Phase 4a まで実装済み・DB スキーマ v6。Phase 4.5 以降は未着手。2026-05-13 起動）。
 
 | Phase | スコープ | 状態 |
 |-------|---------|------|
@@ -26,8 +26,10 @@
 | 0.5. スクレイパー | +9 ソース (HTML scraper layer) | ✅ |
 | 1. 重複排除 5層 + 7ch Discord | URL正規化/Levenshtein/body_hash/引用元/時系列 + category 別 webhook | ✅ |
 | 2. 信頼度Tier + ハイプフィルタ + LLM fallback | Source tier scoring, hype detection, MCP tagging | ✅ |
-| 3. ベンチマーク + GitHub Trending | LMArena / HF Leaderboard / MTEB / huchenme | ⏳ |
-| 4. パーソナライゼーション | Bayesian推薦、A/B test、リアクション学習 | ⏳ |
+| 3. ベンチマーク + GitHub Trending | LMArena + MTEB + GitHub Trending（スクレイピング）+ DB v5 スナップショット | ✅ |
+| 3.5. ベンチマーク拡充 | BigCodeBench + AlpacaEval 追加。Open LLM v2 / HELM は見送り | ✅ |
+| 4a. リアクション収集 | Discord message_id 保存 + Bot API でリアクション収集 + DB v6 `reactions` テーブル（スコアへの反映は no-op で 1.0 固定） | ✅ |
+| 4.5. パーソナライゼーション | リアクションからの Bayesian（Beta 事後分布）推薦、A/B test、Trending キーワード動的化 | ⏳ |
 | 5. 日本語 + Podcast | Zenn / Qiita / はてブ / Cognitive Revolution 等 | ⏳ |
 | 6. core 抽出 | qa-radar-core 抽出の再検討 | ⏳ |
 
