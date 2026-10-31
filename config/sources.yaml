@@ -1,4 +1,4 @@
-# ai-radar ソースリスト（Phase 0.5、20本、RSS 12 + scraper 8）
+# ai-radar ソースリスト（Phase 5、26本、RSS/Atom 18 + scraper 8、全件有効）
 #
 # スキーマ:
 #   slug:       一意ID (snake_case 推奨、DB の sources.slug に保存)
@@ -17,12 +17,15 @@
 #     review_evidence_url: 査読の根拠URL。peer_reviewed は掲載先と根拠URLが必須
 #     popularity_signal: none | community_upvotes (品質/査読の証拠ではない)
 #   enabled:    クローラーが取り込むか
+#   fetch_kind: rss (既定、Atomを含む) | scraper
 #   fetch_policy:
 #     min_interval_seconds:   再取得の最小間隔（DDoS抑止）
 #     max_items_per_fetch:    1回の取得で読む上限
 #   license_note:             利用規約上の集約可否についてのメモ
 #
-# 全URLは 2026-05-13 時点で WebFetch + curl で実物確認済み (200応答 + DOM 構造解析済み).
+# 確認日: 2026-10-31。Phase 5 追加6本は curl で HTTP 200 + RSS/Atom パースを確認。
+# 各配信ホストの robots.txt と公開利用規約を確認（詳細は各 license_note）。
+# 既存20本のURL確認日は 2026-05-13 (WebFetch + curl、DOM 構造解析)。今回の再確認対象外。
 # Sakana AI は Phase 0 検証時に見落としていた `feed.xml` (Atom) が利用可能なので RSS 経路.
 # Anthropic / HF Papers / Cursor / ELYZA / AI2 / Kimi / Luma / BFL は fetch_kind: scraper
 # (per-source HTML parser を `src/ai_radar/crawler/scrapers/{slug}.py` に実装).
@@ -301,3 +304,108 @@ sources:
     fetch_kind: scraper
     fetch_policy: { min_interval_seconds: 86400, max_items_per_fetch: 15 }
     license_note: 公開 HTML、FLUX 画像生成、出所明示で集約可
+
+  # ============================================================
+  # Phase 5 追加 (6): 日本語コミュニティ + 英語ポッドキャスト
+  # Podcast は既存カテゴリ newsletter (Tier 3、対談・解説) に含める。
+  # ============================================================
+
+  - slug: zenn-llm
+    name: Zenn LLM
+    feed_url: https://zenn.dev/topics/llm/feed
+    site_url: https://zenn.dev/topics/llm
+    language: ja
+    category: jp
+    tier: 4
+    enabled: true
+    fetch_kind: rss
+    fetch_policy: { min_interval_seconds: 21600, max_items_per_fetch: 20 }
+    license_note: >-
+      2026-10-31 curl HTTP 200・RSS 2.0確認。
+      https://zenn.dev/terms は権利侵害・サービス妨害を禁止、投稿の権利は投稿者に帰属。
+      https://zenn.dev/robots.txt は当該フィードを禁止していない。
+      公開RSSのタイトル・短い抜粋・出所リンクを扱い、全文転載の許諾とは解釈しない。
+
+  - slug: zenn-generative-ai
+    name: Zenn 生成AI
+    feed_url: https://zenn.dev/topics/%E7%94%9F%E6%88%90ai/feed
+    site_url: https://zenn.dev/topics/%E7%94%9F%E6%88%90ai
+    language: ja
+    category: jp
+    tier: 4
+    enabled: true
+    fetch_kind: rss
+    fetch_policy: { min_interval_seconds: 21600, max_items_per_fetch: 20 }
+    license_note: >-
+      2026-10-31 curl HTTP 200・RSS 2.0確認。
+      https://zenn.dev/terms は権利侵害・サービス妨害を禁止、投稿の権利は投稿者に帰属。
+      https://zenn.dev/robots.txt は当該フィードを禁止していない。
+      公開RSSのタイトル・短い抜粋・出所リンクを扱い、全文転載の許諾とは解釈しない。
+
+  - slug: qiita-llm
+    name: Qiita LLM
+    feed_url: https://qiita.com/tags/llm/feed
+    site_url: https://qiita.com/tags/llm
+    language: ja
+    category: jp
+    tier: 4
+    enabled: true
+    fetch_kind: rss
+    fetch_policy: { min_interval_seconds: 21600, max_items_per_fetch: 20 }
+    license_note: >-
+      2026-10-31 curl HTTP 200・Atom 1.0確認。
+      https://qiita.com/terms 第10条は著作権を投稿者等に留保、第11条は権利侵害・過負荷を禁止。
+      https://qiita.com/robots.txt は当該タグフィードを禁止していない。
+      公式Atomのタイトル・短い抜粋・著者・出所リンクを扱い、全文再配信はしない。
+
+  - slug: qiita-generative-ai
+    name: Qiita 生成AI
+    feed_url: https://qiita.com/tags/%E7%94%9F%E6%88%90ai/feed
+    site_url: https://qiita.com/tags/%E7%94%9F%E6%88%90ai
+    language: ja
+    category: jp
+    tier: 4
+    enabled: true
+    fetch_kind: rss
+    fetch_policy: { min_interval_seconds: 21600, max_items_per_fetch: 20 }
+    license_note: >-
+      2026-10-31 curl HTTP 200・Atom 1.0確認。
+      https://qiita.com/terms 第10条は著作権を投稿者等に留保、第11条は権利侵害・過負荷を禁止。
+      https://qiita.com/robots.txt は当該タグフィードを禁止していない。
+      公式Atomのタイトル・短い抜粋・著者・出所リンクを扱い、全文再配信はしない。
+
+  - slug: hatena-ai
+    name: はてなブックマーク AI
+    feed_url: https://b.hatena.ne.jp/q/AI?mode=rss
+    site_url: https://b.hatena.ne.jp/q/AI
+    language: ja
+    category: jp
+    tier: 5
+    enabled: true
+    fetch_kind: rss
+    fetch_policy: { min_interval_seconds: 21600, max_items_per_fetch: 30 }
+    license_note: >-
+      2026-10-31 curl HTTP 200・RSS 1.0 (RDF)確認。
+      https://policies.hatena.ne.jp/rule は権利侵害・過負荷を禁止し、API/RSSによる公開を規定。
+      https://b.hatena.ne.jp/robots.txt は ai-radar の当該フィード取得を禁止せず、Crawl-delayは5秒。
+      1フィードを6時間以上の間隔で取得し、タイトル・短い抜粋・元記事リンクを扱う。
+      集約先の記事やコメントの転載許諾とは解釈しない。
+
+  - slug: cognitive-revolution
+    name: The Cognitive Revolution
+    feed_url: https://feeds.megaphone.fm/RINTP3108857801
+    site_url: https://www.cognitiverevolution.ai/
+    language: en
+    category: newsletter
+    tier: 3
+    enabled: true
+    fetch_kind: rss
+    fetch_policy: { min_interval_seconds: 43200, max_items_per_fetch: 10 }
+    license_note: >-
+      2026-10-31 公式サイトのRSSリンクから配信元を確認、curl HTTP 200・音声enclosure付きRSS 2.0確認。
+      https://feeds.megaphone.fm/robots.txt は全パスの取得を許可。
+      番組サイトに独自利用規約へのリンクは見当たらず、フィードにcopyright表示あり。
+      https://www.spotify.com/us/legal/megaphone-publisher-terms/ は配信者向け規約で、
+      第4.2条はプラットフォームの自動抽出を禁止、第5.1条は配信者の権利を留保。
+      番組公式が案内する公開RSSのみを取得し、転載許諾とは解釈しない。
+      タイトル・短い番組紹介・出所リンクのみ扱い、音声の取得・再配信はしない。

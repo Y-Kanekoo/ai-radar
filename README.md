@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 
-**ai-radar** collects articles, papers, and product releases from 20+ verified AI/LLM
+**ai-radar** collects articles, papers, and product releases from 26 configured AI/LLM
 sources (English + Japanese) and serves them through three channels:
 
 1. **Public RSS feed** — hosted on GitHub Pages
@@ -20,7 +20,7 @@ For the Japanese readme, see [README.ja.md](README.ja.md).
 
 ## Status
 
-🚧 Under active development (Phase 4a implemented — DB schema v6; Phase 4.5+ pending. Launched 2026-05-13).
+🚧 Under active development (Phases 0–4a and 5 implemented — DB schema v6; Phases 4.5 and 6 pending. Launched 2026-05-13).
 
 | Phase | Scope | Status |
 |-------|-------|--------|
@@ -32,27 +32,37 @@ For the Japanese readme, see [README.ja.md](README.ja.md).
 | 3.5. Benchmark expansion | BigCodeBench + AlpacaEval added. Open LLM v2 / HELM deferred. | ✅ |
 | 4a. Reaction collector | Discord message_id capture + Bot API reaction collector + DB v6 `reactions` table (scoring hook is a no-op returning 1.0) | ✅ |
 | 4.5. Personalization | Bayesian (Beta posterior) recommendation from reactions, A/B test, dynamic Trending keywords | ⏳ |
-| 5. JP sources + Podcast | Zenn / Qiita / Hatena / Cognitive Revolution etc. | ⏳ |
+| 5. JP sources + Podcast | Zenn / Qiita / Hatena / Cognitive Revolution | ✅ |
 | 6. Core extraction | Reconsider qa-radar-core abstraction | ⏳ |
 
-## Sources (20 total, Phase 0 + 0.5)
+## Sources (26 total, Phases 0 + 0.5 + 5)
 
-20 verified sources: 12 RSS direct + 8 HTML scraper. Each source declares
-`fetch_kind: rss | scraper` in `config/sources.yaml`.
+26 enabled sources: 18 RSS/Atom direct + 8 HTML scrapers. The six Phase 5 feeds
+were checked with curl (HTTP 200), parsed as RSS/Atom, and reviewed against
+robots.txt and published terms on 2026-10-31. The original 20 sources retain their
+2026-05-13 verification date. `fetch_kind: rss` includes Atom and RSS 1.0 (RDF).
 
 | Category | Sources |
 |---|---|
-| **Release (Tier 1, RSS)** | Hugging Face Blog, Google Research Blog, Microsoft AI News |
-| **Release (Tier 1, scraper)** | Anthropic News, Cursor Blog, Luma News, BFL Blog, Sakana AI, Kimi Blog (Moonshot) |
+| **Release (RSS)** | Hugging Face Blog, Google Research Blog, Microsoft AI News, Midjourney Updates, Sakana AI |
+| **Release (scraper)** | Anthropic News, Kimi Blog (Moonshot), Luma AI News, Black Forest Labs |
 | **Paper (RSS)** | arXiv cs.LG |
 | **Paper (scraper)** | Hugging Face Papers (Daily), Allen AI Blog |
-| **Newsletter** | TLDR AI, Ben's Bites, Latent Space |
-| **Tool / Code Editor** | Windsurf, Replit, Cursor |
-| **Video / Image gen** | Midjourney (RSS), Luma AI, Black Forest Labs |
-| **JP** | Stockmark (RSS), ELYZA News (scraper) |
+| **Newsletter (RSS)** | TLDR AI, Ben's Bites, Latent Space |
+| **Podcast (RSS, category: newsletter)** | The Cognitive Revolution |
+| **Tool / Code Editor (RSS)** | Windsurf, Replit |
+| **Tool / Code Editor (scraper)** | Cursor |
+| **JP (RSS/Atom)** | Stockmark, Zenn LLM, Zenn 生成AI, Qiita LLM, Qiita 生成AI, Hatena Bookmark AI |
+| **JP (scraper)** | ELYZA News |
 
-See [config/sources.yaml](config/sources.yaml) for the full list with feed URLs
-and license notes.
+The Cognitive Revolution uses the existing `newsletter` category and Tier 3,
+including its Discord webhook. Episodes retain their page URL when available;
+otherwise their audio enclosure URL is used as the reference. Audio is never
+downloaded or republished. Zenn and Qiita use Tier 4, and Hatena uses Tier 5.
+Overlapping topic/tag feeds use the existing cross-source deduplication.
+
+See [config/sources.yaml](config/sources.yaml) for feed URLs, fetch limits,
+verification dates, and license notes.
 
 ## Tags (12 AI-specific)
 
@@ -78,6 +88,8 @@ score = source_tier_score(tier) × time_decay(category, age) × user_interest
 | 3 | Curation (TLDR AI, Ben's Bites, Latent Space) | 0.7 |
 | 4 | Personal blog (Substack, Medium, HN) | 0.5 |
 | 5 | SNS / aggregators / auto-translation | 0.3 |
+
+<!-- TODO(autonomous): 既存のTier表はarXivをTier 1・査読系と誤記している。実設定はTier 2・査読状態unknown。旧Phase番号（pyproject.toml等）とdocs/sources.mdの旧QA一覧も別途同期する。 -->
 
 Time decay λ per category: `release=0.5` (half-life 1.4d), `benchmark=0.3` (2.3d),
 `paper=0.05` (14d), `tutorial=0.01` (70d). Delivery threshold = 0.5.
@@ -134,12 +146,12 @@ as fallback for all categories.
 |---|---|---|
 | `AI_RADAR_DISCORD_WEBHOOK_RELEASE` | `#ai-radar-release` | Anthropic, OpenAI, HF Blog, Google Research, MS AI, Sakana, BFL, Luma, Kimi, Midjourney |
 | `AI_RADAR_DISCORD_WEBHOOK_PAPER` | `#ai-radar-paper` | arXiv cs.LG, HF Papers, AI2 |
-| `AI_RADAR_DISCORD_WEBHOOK_NEWSLETTER` | `#ai-radar-newsletter` | TLDR AI, Ben's Bites, Latent Space |
+| `AI_RADAR_DISCORD_WEBHOOK_NEWSLETTER` | `#ai-radar-newsletter` | TLDR AI, Ben's Bites, Latent Space, The Cognitive Revolution |
 | `AI_RADAR_DISCORD_WEBHOOK_TOOL` | `#ai-radar-tool` | Windsurf, Replit, Cursor |
-| `AI_RADAR_DISCORD_WEBHOOK_JP` | `#ai-radar-jp` | Stockmark, ELYZA |
+| `AI_RADAR_DISCORD_WEBHOOK_JP` | `#ai-radar-jp` | Stockmark, ELYZA, Zenn, Qiita, Hatena |
 | `AI_RADAR_DISCORD_WEBHOOK_BENCHMARK` | `#ai-radar-benchmark` | Benchmark diffs from `scripts/track_benchmarks.py` (LMArena, MTEB, BigCodeBench, AlpacaEval; Phase 3 / 3.5) |
 | `AI_RADAR_DISCORD_WEBHOOK_TREND` | `#ai-radar-trend` | GitHub Trending diffs from `scripts/track_benchmarks.py` (Phase 3) |
-| `AI_RADAR_DISCORD_WEBHOOK_PODCAST` | `#ai-radar-podcast` | reserved for Phase 5 |
+| `AI_RADAR_DISCORD_WEBHOOK_PODCAST` | `#ai-radar-podcast` | reserved; The Cognitive Revolution uses `newsletter` |
 | `DISCORD_WEBHOOK_URL` | (legacy / fallback) | any category without a specific webhook |
 
 Resolution order: per-category env > `DISCORD_WEBHOOK_URL` fallback > skip.

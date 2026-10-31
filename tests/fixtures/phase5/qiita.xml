@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 実フィードの構造を再現した合成データ。第三者の記事本文は含めない。 -->
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>AIタグが付けられた新着記事 - Qiita</title>
+  <id>tag:qiita.com,2005:/tags/llm</id>
+  <link rel="alternate" type="text/html" href="https://qiita.com/tags/llm"/>
+  <updated>2026-10-31T18:00:00+09:00</updated>
+  <entry>
+    <id>tag:qiita.com,2005:PublicArticle/phase5-test</id>
+    <title>生成AIで検索を組み立てる</title>
+    <link rel="alternate" type="text/html" href="https://qiita.com/test_author/items/rag-example"/>
+    <author><name>テスト著者</name></author>
+    <published>2026-10-31T18:00:00+09:00</published>
+    <updated>2026-10-31T19:00:00+09:00</updated>
+    <content type="text">検索結果を使って日本語で回答する。</content>
+  </entry>
+</feed>
