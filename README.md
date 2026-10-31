@@ -20,7 +20,7 @@ For the Japanese readme, see [README.ja.md](README.ja.md).
 
 ## Status
 
-🚧 Under active development (Phase 1 in progress, 2026-05-13 launch).
+🚧 Under active development (Phase 4a implemented — DB schema v6; Phase 4.5+ pending. Launched 2026-05-13).
 
 | Phase | Scope | Status |
 |-------|-------|--------|
@@ -30,7 +30,8 @@ For the Japanese readme, see [README.ja.md](README.ja.md).
 | 2. Trust-tier + hype-filter + LLM fallback | Source tier scoring, hype detection, MCP-based tagging | ✅ |
 | 3. Benchmarks + GitHub Trending | LMArena + MTEB + GitHub Trending (scraping) + DB v5 snapshots | ✅ |
 | 3.5. Benchmark expansion | BigCodeBench + AlpacaEval added. Open LLM v2 / HELM deferred. | ✅ |
-| 4. Personalization | Bayesian recommendation, A/B test, reaction learning | ⏳ |
+| 4a. Reaction collector | Discord message_id capture + Bot API reaction collector + DB v6 `reactions` table (scoring hook is a no-op returning 1.0) | ✅ |
+| 4.5. Personalization | Bayesian (Beta posterior) recommendation from reactions, A/B test, dynamic Trending keywords | ⏳ |
 | 5. JP sources + Podcast | Zenn / Qiita / Hatena / Cognitive Revolution etc. | ⏳ |
 | 6. Core extraction | Reconsider qa-radar-core abstraction | ⏳ |
 
@@ -136,8 +137,8 @@ as fallback for all categories.
 | `AI_RADAR_DISCORD_WEBHOOK_NEWSLETTER` | `#ai-radar-newsletter` | TLDR AI, Ben's Bites, Latent Space |
 | `AI_RADAR_DISCORD_WEBHOOK_TOOL` | `#ai-radar-tool` | Windsurf, Replit, Cursor |
 | `AI_RADAR_DISCORD_WEBHOOK_JP` | `#ai-radar-jp` | Stockmark, ELYZA |
-| `AI_RADAR_DISCORD_WEBHOOK_BENCHMARK` | `#ai-radar-benchmark` | reserved for Phase 3 |
-| `AI_RADAR_DISCORD_WEBHOOK_TREND` | `#ai-radar-trend` | reserved for Phase 3 |
+| `AI_RADAR_DISCORD_WEBHOOK_BENCHMARK` | `#ai-radar-benchmark` | Benchmark diffs from `scripts/track_benchmarks.py` (LMArena, MTEB, BigCodeBench, AlpacaEval; Phase 3 / 3.5) |
+| `AI_RADAR_DISCORD_WEBHOOK_TREND` | `#ai-radar-trend` | GitHub Trending diffs from `scripts/track_benchmarks.py` (Phase 3) |
 | `AI_RADAR_DISCORD_WEBHOOK_PODCAST` | `#ai-radar-podcast` | reserved for Phase 5 |
 | `DISCORD_WEBHOOK_URL` | (legacy / fallback) | any category without a specific webhook |
 
@@ -145,7 +146,7 @@ Resolution order: per-category env > `DISCORD_WEBHOOK_URL` fallback > skip.
 Each category has an independent notification record (`channel=discord_<category>`),
 so the same article is delivered only once per category.
 
-Configure these as **GitHub Actions secrets** for the `crawl.yml` workflow.
+Configure these as **GitHub Actions secrets**: the article categories for `crawl.yml`, and `..._BENCHMARK` / `..._TREND` for `benchmarks.yml`.
 
 Notification outcomes (Issue #8): category and aggregate results appear in logs and
 `GITHUB_STEP_SUMMARY`. `unconfigured` is an intentional skip (exit 0), distinct from
