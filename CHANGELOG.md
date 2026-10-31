@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### SQLite DROP COLUMN portability (2026-10-31)
+
+#### Fixed
+
+- `sources.tier` 直前の DDL コメントからカンマを除去. SQLite 3.35〜3.51.0 の
+  `ALTER TABLE ... DROP COLUMN` はコメント中のカンマを列区切りと誤認し
+  `error in table sources after drop column: incomplete input` で失敗するため,
+  pre-v4 schema を再現するテスト (`test_dry_run_migrates_only_memory_copy[*-pre-v4-schema]`)
+  が SQLite 3.50.4 などのローカル環境だけで落ちていた (CI の新しい SQLite では再現しない).
+- 保存済み CREATE TABLE のコメントにカンマが無いことを静的に検査する回帰テストを追加.
+  本番の migration は DROP COLUMN を使わないため, 既存 DB・スキーマ版 (v6) は不変.
+
 ### Source provenance labels (2026-10-02)
 
 #### Fixed

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 from ai_radar.db import SCHEMA_VERSION, init_db
@@ -440,3 +441,44 @@ def test_v5_to_v6_migration_adds_columns_and_table(tmp_path: Path) -> None:
         assert row["version"] == 6
     finally:
         conn.close()
+
+
+def test_stored_table_sql_comments_have_no_commas(tmp_path: Path) -> None:
+    """SQLite 3.35〜3.51.0 の DROP COLUMN はコメント中のカンマで壊れるため禁止する.
+
+    CREATE TABLE 内のコメントは sqlite_master にそのまま保存され、コメント直後の列を
+    DROP COLUMN すると "error in table ... after drop column: incomplete input" になる
+    (https://sqlite.org/forum/forumpost/542bf0a84e6d987b). 実行環境の SQLite 版に
+    依存せず検出できるよう、保存済み DDL を静的に検査する.
+    """
+    conn = init_db(tmp_path / "a.db")
+    try:
+        rows = conn.execute(
+            "SELECT name, sql FROM sqlite_master WHERE type = 'table' AND sql IS NOT NULL"
+        ).fetchall()
+    finally:
+        conn.close()
+    offenders = [
+        (name, line.strip())
+        for name, sql in rows
+        for line in sql.splitlines()
+        if "--" in line and "," in line.split("--", 1)[1]
+    ]
+    assert offenders == []
+
+
+def test_every_v4_plus_column_can_be_dropped_for_legacy_fixtures(tmp_path: Path) -> None:
+    """旧 schema を再現するテスト fixture の DROP COLUMN が SQLite の版に依存しない."""
+    conn = init_db(tmp_path / "a.db")
+    try:
+        conn.execute("ALTER TABLE articles DROP COLUMN is_hype")
+        conn.execute("ALTER TABLE sources DROP COLUMN tier")
+        conn.execute("DROP INDEX idx_notifications_discord_msg")
+        conn.execute("ALTER TABLE article_notifications DROP COLUMN discord_message_id")
+        conn.execute("ALTER TABLE article_notifications DROP COLUMN discord_channel_id")
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(sources)")}
+    except sqlite3.OperationalError as exc:  # pragma: no cover - failure path
+        raise AssertionError(f"SQLite {sqlite3.sqlite_version}: {exc}") from exc
+    finally:
+        conn.close()
+    assert "tier" not in cols

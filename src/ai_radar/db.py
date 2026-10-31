@@ -49,7 +49,9 @@ CREATE TABLE IF NOT EXISTS sources (
     last_etag TEXT,
     last_modified TEXT,
     consecutive_errors INTEGER DEFAULT 0,
-    -- v4 (Phase 2): 信頼度 Tier 1-5 (1=公式, 5=SNS). yaml の値を upsert 時に書く.
+    -- v4 (Phase 2): 信頼度 Tier 1-5 (1=公式 / 5=SNS). yaml の値を upsert 時に書く.
+    -- 注: スキーマ内の SQL コメントにカンマを書かない (SQLite 3.35〜3.51.0 の DROP COLUMN が
+    -- コメント中のカンマを列区切りと誤認し "incomplete input" で失敗するため).
     tier INTEGER NOT NULL DEFAULT 3
 );
 
