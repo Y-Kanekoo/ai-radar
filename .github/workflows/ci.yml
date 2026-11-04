@@ -94,7 +94,7 @@ jobs:
   cache-seed:
     name: Seed isolated dependency cache (${{ matrix.python-version }})
     needs: lint-and-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -152,7 +152,7 @@ jobs:
   cache-restore:
     name: Verify dependency cache restore (${{ matrix.python-version }})
     needs: cache-seed
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
